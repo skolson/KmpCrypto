@@ -1,0 +1,9 @@
+/local.properties
+/.gradle/
+/.idea/
+/build/
+/KmpCrypto/build/
+/KmpCrypto/.gradle/
+/TestFiles/Work/
+*.iml
+/KmpCrypto/local.properties
