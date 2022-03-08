@@ -66,6 +66,23 @@ class Cipher {
     var padding = Paddings.None
 
     /**
+     * Generate a Random IV of the specified size in bytes, using the specified SecureRandom class
+     * as a source.
+     * @param size length of initialization vector in bytes. Default is specified by the configured
+     * engine, so the default should typically be sufficient.
+     * @param randomSource Uses the [SecureRandom] source to create a cryptographic-quality random set of
+     * bytes. Default uses SecureRandomMechanism.Hash_DRBG and SecureRandomAlgorithm.SHA512
+     */
+    fun randomIV(
+        size: Int = engine.ivSize,
+        randomSource: SecureRandom = SecureRandom()
+    ): UByteArray {
+        return UByteArray(size).apply {
+            randomSource.nextBytes(this)
+        }
+    }
+
+    /**
      * This is a convenience method for compatibility with [javax.crypto.Cipher.getInstance(String)]
      *
      * Parse a specification string for Engine, chaining, and padding. Format of string is:

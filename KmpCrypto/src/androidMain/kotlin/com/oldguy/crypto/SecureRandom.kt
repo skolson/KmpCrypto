@@ -37,8 +37,12 @@ actual class SecureRandom actual constructor(
         b.toUByteArray().copyInto(randomBytes)
     }
 
-    companion object {
+    actual companion object {
         const val javaAlgorithm = "DRBG"
         const val androidAlgorithm = "NativePRNGBlocking"
+        /**
+         * List of algorithms available in the JVM being used.
+         */
+        actual val validAlgorithms = java.security.Security.getAlgorithms("SecureRandom").toList()
     }
 }

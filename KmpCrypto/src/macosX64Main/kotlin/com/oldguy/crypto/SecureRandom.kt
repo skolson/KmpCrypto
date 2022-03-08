@@ -20,4 +20,9 @@ algorithm: SecureRandomAlgorithm
         TODO("Not yet implemented")
     }
 
+    actual companion object {
+        actual val validAlgorithms: List<String>
+            get() = TODO("Not yet implemented")
+    }
+
 }

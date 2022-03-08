@@ -57,7 +57,7 @@ class AesTests {
             parse("aes/gcm")
             key {
                 key = CryptoTestHelp.key1
-                iv = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u, 1u, 2u, 3u, 4u)
+                iv = randomIV()
                 hashKeyLengthBits = 256
                 keyDigest = Digests.SHA256
             }

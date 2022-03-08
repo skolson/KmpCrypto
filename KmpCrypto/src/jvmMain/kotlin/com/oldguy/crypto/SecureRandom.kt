@@ -7,16 +7,13 @@ package com.oldguy.crypto
  * Note that Android doesn't offer this flexibility, so the arguments passed in are ignored.  In JVM
  * 9 or later implementations, these arguments do control instantiation
  */
-@ExperimentalUnsignedTypes
 actual class SecureRandom actual constructor(
     mechanism: SecureRandomMechanism,
     algorithm: SecureRandomAlgorithm
 ) {
-    private lateinit var javaSecureRandom: java.security.SecureRandom
+    private var javaSecureRandom = java.security.SecureRandom.getInstanceStrong()
 
-    actual constructor() : this(SecureRandomMechanism.Hash_DRBG, SecureRandomAlgorithm.SHA512) {
-        javaSecureRandom = java.security.SecureRandom.getInstanceStrong()
-    }
+    actual constructor() : this(SecureRandomMechanism.Hash_DRBG, SecureRandomAlgorithm.SHA512)
 
     /**
      * @param randomBytes contents of array will be filled with random bytes. Existing content is
@@ -40,7 +37,10 @@ actual class SecureRandom actual constructor(
         b.toUByteArray().copyInto(randomBytes)
     }
 
-    companion object {
-        val validAlgorithms = java.security.Security.getAlgorithms("SecureRandom").toList()
+    actual companion object {
+        /**
+         * List of algorithms available in the JVM being used.
+         */
+        actual val validAlgorithms = java.security.Security.getAlgorithms("SecureRandom").toList()
     }
 }
