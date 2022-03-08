@@ -7,6 +7,7 @@ class BlockCipherAdapter(val cipher: StreamCipher) :
     BlockCipher {
     override val algorithmName = cipher.algorithmName
     override val blockSize = 16
+    override val ivSize = blockSize
 
     override fun init(forEncryption: Boolean, params: CipherParameters) {
         if (params is ParametersWithIV) {
@@ -172,6 +173,7 @@ class RC2Engine : BlockCipher {
     private var workingKey = IntArray(0)
     private var encrypting = false
     override val blockSize = 8
+    override val ivSize = 8
 
     private fun generateWorkingKey(
         key: UByteArray,

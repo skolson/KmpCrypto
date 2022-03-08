@@ -32,6 +32,7 @@ import com.oldguy.common.toIntShl
 class AESEngine : BlockCipher {
     override val algorithmName = "AES"
     override val blockSize = 16
+    override val ivSize = blockSize
 
     private var rounds = 0
     private lateinit var workingKey: Array<IntArray>

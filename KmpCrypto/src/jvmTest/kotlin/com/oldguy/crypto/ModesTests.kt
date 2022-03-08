@@ -3,9 +3,11 @@ package com.oldguy.crypto
 import kotlin.test.Test
 
 class AesTests {
+    val iv8 = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
+    val iv16 = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
 
     @Test
-    fun aesCbcV2() {
+    fun aesCbc() {
         Cipher.build {
             engine { aes() }
             mode = CipherModes.CBC
@@ -40,7 +42,7 @@ class AesTests {
             parse("aes/ccm")
             key {
                 key = CryptoTestHelp.key1
-                iv = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
+                iv = iv8
                 hashKeyLengthBits = 256
                 keyDigest = Digests.SHA256
             }
@@ -55,7 +57,7 @@ class AesTests {
             parse("aes/gcm")
             key {
                 key = CryptoTestHelp.key1
-                iv = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
+                iv = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u, 1u, 2u, 3u, 4u)
                 hashKeyLengthBits = 256
                 keyDigest = Digests.SHA256
             }
@@ -70,7 +72,7 @@ class AesTests {
             parse("aes/ecb")
             key {
                 key = CryptoTestHelp.key1
-                iv = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
+                iv = iv16
                 hashKeyLengthBits = 256
                 keyDigest = Digests.SHA256
             }

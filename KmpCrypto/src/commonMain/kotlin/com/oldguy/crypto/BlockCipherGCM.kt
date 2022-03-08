@@ -699,10 +699,11 @@ class Tables4kGCMMultiplier : GCMMultiplier {
  * NIST Special Publication 800-38D.
  */
 class GCMBlockCipher(c: BlockCipher, m: GCMMultiplier = Tables4kGCMMultiplier()) : AEADBlockCipher {
-    // not final due to a compiler bug
+
     override val cipher = c
     override val algorithmName = "${cipher.algorithmName}/GCM"
     override val blockSize = c.blockSize
+    override val ivSize = 12
 
     private val multiplier = m
     private lateinit var exp: GCMExponentiator

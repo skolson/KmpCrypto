@@ -78,6 +78,12 @@ interface BlockCipher {
     val blockSize: Int
 
     /**
+     * Size of the initialization vector, will typically be same as blockSize unless a specific mode
+     * specifies a different one.
+     */
+    val ivSize: Int
+
+    /**
      * Initialise the cipher.
      *
      * @param forEncryption if true the cipher is initialised for
@@ -129,6 +135,7 @@ open class BufferedBlockCipher(var cipher: BlockCipher, partialOk: Boolean = fal
     var bufOff = 0
     var forEncryption = false
     override val blockSize = cipher.blockSize
+    override val ivSize = cipher.ivSize
     override val algorithmName = cipher.algorithmName
 
     private val pgpCFB = cipher.algorithmName.contains("/PGP")

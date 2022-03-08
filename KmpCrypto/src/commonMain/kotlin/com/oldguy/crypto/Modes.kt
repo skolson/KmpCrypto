@@ -2,12 +2,14 @@ package com.oldguy.crypto
 
 import com.oldguy.common.io.UByteBuffer
 
+
 /**
  * implements Cipher-Block-Chaining (CBC) mode on top of a simple cipher.
  */
 class CBCBlockCipher(val cipher: BlockCipher) : BlockCipher {
     override val blockSize = cipher.blockSize
-    private val initVector = UByteArray(blockSize)
+    override val ivSize = cipher.blockSize
+    private val initVector = UByteArray(ivSize)
     private val cbcV = UByteArray(blockSize)
     private val cbcNextV = UByteArray(blockSize)
     private var encrypting = false
@@ -158,14 +160,16 @@ class CBCBlockCipher(val cipher: BlockCipher) : BlockCipher {
  * implements a Cipher-FeedBack (CFB) mode on top of a simple cipher.
  */
 class CFBBlockCipher(
-    override val cipher: BlockCipher,
+    val cipher: BlockCipher,
     bitBlockSize: Int
-) : StreamBlockCipher(cipher) {
-    private val initVector = UByteArray(cipher.blockSize)
-    private val cfbV = UByteArray(cipher.blockSize)
-    private val cfbOutV = UByteArray(cipher.blockSize)
+) : BlockCipher {
     override val blockSize = bitBlockSize / 8
-    private val inBuf = UByteArray(blockSize)
+    override val ivSize = blockSize
+
+    private val initVector = UByteArray(blockSize)
+    private val cfbV = UByteArray(blockSize)
+    private val cfbOutV = UByteArray(blockSize)
+
     override val algorithmName = "${cipher.algorithmName}/CFB${blockSize * 8}"
     val currentIV get() = cfbV.copyOf()
 
@@ -213,38 +217,6 @@ class CFBBlockCipher(
         }
     }
 
-    override fun calculateByte(b: UByte): UByte {
-        return if (encrypting) encryptByte(b) else decryptByte(b)
-    }
-
-    private fun encryptByte(byte: UByte): UByte {
-        if (byteCount == 0) {
-            cipher.processBlock(cfbV, 0, cfbOutV, 0)
-        }
-        val rv = (cfbOutV[byteCount] xor byte)
-        inBuf[byteCount++] = rv
-        if (byteCount == blockSize) {
-            byteCount = 0
-            cfbV.copyInto(cfbV, 0, blockSize, blockSize + cfbV.size)
-            inBuf.copyInto(cfbV, cfbV.size - blockSize, 0, blockSize)
-        }
-        return rv
-    }
-
-    private fun decryptByte(byte: UByte): UByte {
-        if (byteCount == 0) {
-            cipher.processBlock(cfbV, 0, cfbOutV, 0)
-        }
-        inBuf[byteCount] = byte
-        val rv = (cfbOutV[byteCount++] xor byte)
-        if (byteCount == blockSize) {
-            byteCount = 0
-            cfbV.copyInto(cfbV, 0, blockSize, cfbV.size)
-            inBuf.copyInto(cfbV, cfbV.size - blockSize, 0, blockSize)
-        }
-        return rv
-    }
-
     /**
      * Process one block of input from the array in and write it to
      * the out array.
@@ -264,8 +236,10 @@ class CFBBlockCipher(
         outBlock: UByteArray,
         outOff: Int
     ): Int {
-        processBytes(inBlock, inOff, blockSize, outBlock, outOff)
-        return blockSize
+        return if (encrypting)
+            encryptBlock(inBlock, inOff, outBlock, outOff)
+        else
+            decryptBlock(inBlock, inOff, outBlock, outOff)
     }
 
     /**
@@ -280,13 +254,31 @@ class CFBBlockCipher(
      * @exception IllegalStateException if the cipher isn't initialised.
      * @return the number of bytes processed and produced.
      */
-    fun encryptBlock(
+    private fun encryptBlock(
         bytes: UByteArray,
         inOff: Int,
         out: UByteArray,
         outOff: Int
     ): Int {
-        processBytes(bytes, inOff, blockSize, out, outOff)
+        if (inOff + blockSize > bytes.size) {
+            throw IllegalArgumentException("input buffer too short")
+        }
+        if (outOff + blockSize > out.size) {
+            throw IllegalArgumentException("output buffer too short")
+        }
+        cipher.processBlock(cfbV, 0, cfbOutV, 0)
+        /**
+         * XOR the cfbV with the plaintext producing the ciphertext
+         */
+        for (i in 0 until blockSize) {
+            out[outOff + i] = cfbOutV[i] xor bytes.get(inOff + i)
+        }
+        /**
+         * change over the input block.
+         * src, srcOff, dest, destOff, len
+         */
+        cfbV.copyInto(cfbV, 0, blockSize, cfbV.size)
+        out.copyInto(cfbV, cfbV.size - blockSize, outOff, outOff + blockSize)
         return blockSize
     }
 
@@ -302,13 +294,25 @@ class CFBBlockCipher(
      * @exception IllegalStateException if the cipher isn't initialised.
      * @return the number of bytes processed and produced.
      */
-    fun decryptBlock(
+    private fun decryptBlock(
         bytes: UByteArray,
         inOff: Int,
         out: UByteArray,
         outOff: Int
     ): Int {
-        processBytes(bytes, inOff, blockSize, out, outOff)
+        if (inOff + blockSize > bytes.size) {
+            throw IllegalArgumentException("input buffer too short")
+        }
+        if (outOff + blockSize > out.size) {
+            throw IllegalArgumentException("output buffer too short")
+        }
+        cipher.processBlock(cfbV, 0, cfbOutV, 0)
+        cfbV.copyInto(cfbV, 0, blockSize, cfbV.size)
+        bytes.copyInto(cfbV, cfbV.size - blockSize, inOff, inOff + blockSize)
+        for (i in 0 until blockSize) {
+            out[outOff + i] = cfbOutV[i] xor bytes.get(inOff + i)
+        }
+
         return blockSize
     }
 
@@ -318,19 +322,8 @@ class CFBBlockCipher(
      */
     override fun reset() {
         initVector.copyInto(cfbV)
-        inBuf.fill(0u)
         byteCount = 0
         cipher.reset()
-    }
-
-    override fun processStreamBytes(
-        bytes: UByteArray,
-        inOff: Int,
-        len: Int,
-        out: UByteArray,
-        outOff: Int
-    ): Int {
-        return processBytes(bytes, inOff, len, out, outOff)
     }
 }
 
@@ -345,6 +338,8 @@ class CCMBlockCipher(
     override val cipher: BlockCipher
 ) : AEADBlockCipher {
     override val blockSize = cipher.blockSize
+    override val ivSize = 8
+
     override val algorithmName = "${cipher.algorithmName}/CCM"
     private var forEncryption = false
     private var nonce = UByteArray(0)

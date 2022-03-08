@@ -47,6 +47,8 @@ class Cipher {
 
     lateinit var engine: BlockCipher
 
+    var bufferSize = 4096u
+
     /**
      * Any of the algorithm modes in [CipherModes] can be used with any engine. Default is none.
      */
@@ -115,6 +117,7 @@ class Cipher {
             }
         } else
             padding = Paddings.None
+        build()
     }
 
     /**
@@ -148,12 +151,15 @@ class Cipher {
 
     inline fun engine(arg: Engine.() -> BlockCipher) {
         engine = Engine().arg()
+        build()
     }
 
     inline fun key(arg: KeyConfiguration.() -> Unit) {
-        keyConfiguration = KeyConfiguration().apply { arg() }.apply {
-            parameters = build()
-        }
+        keyConfiguration = KeyConfiguration(engine.ivSize)
+            .apply { arg() }
+            .apply {
+                parameters = build()
+            }
     }
 
     fun build(): Cipher {
@@ -182,61 +188,80 @@ class Cipher {
      * @param input lambda should provide buffers until all input data is processed. Note that every
      * block cipher has a block size, and that the incoming buffers should be a non zero multiple of
      * that block size in length until the last bloc, which can be any size.
-     * @param output lambda is invoked once for each output block.  If
+     * @param output buffer is of [bufferSize] size. lambda is invoked once each time the buffer is
+     * full (or close to it). Buffer is flipped before [output] is called, so the buffer's remaining
+     * value is always the number of bytes to retrieve.
      */
     suspend fun process(
         encrypt: Boolean,
-        input: suspend () -> UByteBuffer,
-        output: suspend (buffer: UByteBuffer) -> Unit
-    ) {
+        input: suspend () -> ByteBuffer,
+        output: suspend (buffer: ByteBuffer) -> Unit
+    ): ULong {
         engine.init(encrypt, parameters)
         val blockSize = engine.blockSize
-        var buf = input()
-        while (buf.hasRemaining) {
-            val blockIn = UByteArray(blockSize)
+        val reader = BufferReader( input )
+        val blockIn = ByteArray(blockSize)
+        val outBuf = ByteBuffer(bufferSize.toInt())
+        var readCount = reader.read(blockIn, 0, blockSize)
+        var totalRead = readCount.toULong()
+        while (readCount > 0) {
             val blockOut = UByteArray(blockSize)
-            val outBuf = UByteBuffer(1024)
-            var totalLength = 0
-            while (buf.hasRemaining) {
-                if (buf.remaining < blockSize)
-                    blockIn.fill(0u)
-                buf.getBytes(blockIn)
-                val length = engine.processBlock(blockIn, 0, blockOut, 0)
-                if (length > outBuf.remaining)
-                    throw IllegalStateException("buf capacity exceeded")
-                outBuf.putBytes(blockOut)
-                totalLength += length
+            if (readCount < blockSize)
+                blockIn.fill(0)
+            val length = engine.processBlock(blockIn.toUByteArray(), 0, blockOut, 0)
+            if (length > outBuf.remaining)
+                throw IllegalStateException("buf capacity exceeded")
+            outBuf.putBytes(blockOut.toByteArray())
+            if (outBuf.remaining < blockSize) {
+                output(outBuf.flip())
+                outBuf.clear()
             }
-            outBuf.rewind()
-            output(outBuf.slice(totalLength))
-            buf = input()
+            readCount = reader.read(blockIn, 0, blockSize)
+            totalRead += readCount.toULong()
         }
+        if (outBuf.position > 0)
+            output(outBuf.flip())
+        return totalRead
     }
 
+    /**
+     * Convenience method for encrypting/decrypting a source file to a destination file. For decryption,
+     * if the inFile has an initialization vector, it must be read before calling this function,
+     * so that the current position of the inFile is the start of encrypted data. For encryption, any
+     * initialization vector should already have been written before calling this.
+     * @param encrypt true for encryption, false for decryption
+     * @param inFile input data file, see note above for IV handling
+     * @param outFile output data file, see note above for IV handling
+     */
     suspend fun process(
         encrypt: Boolean,
         inFile: RawFile,
         outFile: RawFile
-    ) {
+    ): ULong {
         inFile.blockSize = engine.blockSize.toUInt()
-        val buf = UByteBuffer(engine.blockSize)
-        process(encrypt,
-            input = {
-                inFile.read(buf)
-                buf
+        val buf = ByteBuffer(bufferSize.toInt())
+        try {
+            if (encrypt && keyConfiguration.iv.isNotEmpty()) {
+                outFile.write(UByteBuffer(keyConfiguration.iv))
             }
-        ) {
-            outFile.write(it)
+            return process(encrypt,
+                input = {
+                    inFile.read(buf)
+                    buf
+                }
+            ) {
+                outFile.write(it)
+            }
+        } finally {
+            outFile.close()
+            inFile.close()
         }
-        outFile.close()
-        inFile.close()
     }
 
     companion object {
         fun build(lambda: Cipher.() -> Unit): Cipher {
             return Cipher()
                 .apply(lambda)
-                .build()
         }
     }
 
@@ -260,7 +285,7 @@ class Cipher {
      *
      *  See the builders various properties and functions for details on how keys can be configured.
      */
-    class KeyConfiguration {
+    class KeyConfiguration(val ivSize: Int) {
         /**
          * An array of bytes which is the key used. Note that if a Digest is also configured and
          * a hashKeyLength is set, this value will be changed to the hash value at build time. See
@@ -287,6 +312,11 @@ class Cipher {
          * Set this to a UByteArray containing the Initialization Vector desired for the cipher.
          */
         var iv = UByteArray(0)
+            set(value) {
+                if (value.isNotEmpty() && value.size != ivSize)
+                    throw IllegalArgumentException("If specified, IV size must be same as block size: $ivSize")
+                field = value
+            }
 
         /**
          * Set this to a Digest algorithm if the cipher requires fixed length keys.  [hashKeyLength] must

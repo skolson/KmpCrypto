@@ -10,6 +10,7 @@ import com.oldguy.common.toPosInt
 class SICBlockCipher(override val cipher: BlockCipher) : StreamBlockCipher(cipher),
     SkippingStreamCipher {
     override val blockSize = cipher.blockSize
+    override val ivSize = blockSize
     override val algorithmName = "${cipher.algorithmName}/SIC"
     private var initVector = UByteArray(blockSize)
     private val counter = UByteArray(blockSize)

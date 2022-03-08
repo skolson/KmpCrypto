@@ -3,6 +3,7 @@ package com.oldguy.crypto
 class ECBBlockCipher(val cipher: BlockCipher) : BlockCipher {
     override val algorithmName = cipher.algorithmName
     override val blockSize = cipher.blockSize
+    override val ivSize = blockSize
 
     override fun init(forEncryption: Boolean, params: CipherParameters) {
         if (params is ParametersWithIV) {

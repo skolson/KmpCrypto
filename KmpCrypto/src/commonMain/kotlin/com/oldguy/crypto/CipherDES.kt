@@ -10,6 +10,7 @@ import com.oldguy.common.io.UByteBuffer
 open class DESEngine : BlockCipher {
     override val algorithmName = "DES"
     override val blockSize = 8
+    override val ivSize = 8
 
     private var workingKey = IntArray(0)
 
@@ -411,7 +412,7 @@ class DESedeEngine(val largeKey: Boolean = false) : DESEngine() {
     private var forEncryption = false
     override val algorithmName = "DESede"
     override val blockSize = 8
-
+    override val ivSize = 8
     /**
      * initialise a DESede cipher.
      *

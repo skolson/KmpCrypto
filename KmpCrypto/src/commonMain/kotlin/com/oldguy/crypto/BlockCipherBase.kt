@@ -386,6 +386,7 @@ class AEADBlockCipherAdapter(private val _cipher: AEADBlockCipher) :
     BlockCipher {
     override val algorithmName = _cipher.algorithmName
     override val blockSize = _cipher.cipher.blockSize
+    override val ivSize = blockSize
 
     override fun init(forEncryption: Boolean, params: CipherParameters) {
         _cipher.init(forEncryption, params)

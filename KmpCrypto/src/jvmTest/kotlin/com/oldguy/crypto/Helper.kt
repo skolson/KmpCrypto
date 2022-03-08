@@ -17,9 +17,9 @@ class CryptoTestHelp {
 
         fun smallBufTest(cipher: Cipher) {
             cipher.apply {
-                val payload = UByteBuffer(CryptoTestHelp.payload)
-                var encrypted = UByteBuffer(this.engine.blockSize)
-                var decrypted = UByteBuffer(this.engine.blockSize)
+                val payload = ByteBuffer(CryptoTestHelp.payload.toByteArray())
+                var encrypted = ByteBuffer(this.engine.blockSize)
+                var decrypted = ByteBuffer(this.engine.blockSize)
                 runBlocking {
                     process(true, input = { payload }) {
                         encrypted = it
@@ -31,6 +31,7 @@ class CryptoTestHelp {
                 }
             }
         }
+
         fun process(cipher: BlockCipher, payload: UByteBuffer): UByteBuffer {
             val blockIn = UByteArray((cipher.blockSize))
             val blockOut = UByteArray((cipher.blockSize))
