@@ -6,7 +6,7 @@ This is a Kotlin multiplatform (KMP) library for Cryptography, using the same AP
 
 - [Bouncy Castle](https://www.bouncycastle.org/)
 
-The library is early in its lifecycle so is missing lots of crypto functionality.  
+The library is early in its lifecycle so is missing lots of crypto functionality. If you want more, start a repo discussion! :-) 
 
 Supported targets:
 
@@ -118,4 +118,28 @@ A DSL is used to build a Cipher instance which also has basic processing functio
 
 ## AES Encrypt then decrypt a payload
 
-This example configures an AES engine using a String key, CBC mode, and an SHA256 key digest. It configures the Cipher, encrypts an incoming buffer, then decrypts it.  The syntax used supports any number of incoming buffers until an empty buffer indicates end of data. It produces encrypted data in a series of buffers until end of input.   
+This example configures an AES engine using a String key, CBC mode, and an SHA256 key digest. It configures the Cipher and its key, encrypts an incoming buffer, then decrypts it.  The syntax used supports any number of incoming buffers until an empty buffer indicates end of data. It produces encrypted data in a series of buffers until end of input.
+
+```
+      Cipher.build {
+          engine { aes() }
+          mode = CipherModes.CBC
+          key {
+              stringKey = "SomeStringPassword"
+              hashKeyLengthBits = 256
+              keyDigest = Digests.SHA256
+          }
+      }.apply {
+          val payload = UByteBuffer(Charset(Charsets.Utf8).encode("Any payload string"))
+          var encrypted = UByteBuffer(engineParm.blockSize)
+          var decrypted = UByteBuffer(engineParm.blockSize)
+          process(true, input = { payload }) {
+              encrypted = it
+          }
+          process(false, input = { encrypted }) {
+              decrypted = it
+          }
+      }
+```
+
+See the Cipher class javadoc for details on the various configuration options usable in the DSL.

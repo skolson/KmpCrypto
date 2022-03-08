@@ -4,6 +4,8 @@ import com.oldguy.common.io.ByteBuffer
 import com.oldguy.common.io.Charset
 import com.oldguy.common.io.Charsets
 import com.oldguy.common.io.UByteBuffer
+import kotlinx.coroutines.runBlocking
+import kotlin.test.assertEquals
 
 @ExperimentalUnsignedTypes
 class CryptoTestHelp {
@@ -13,6 +15,22 @@ class CryptoTestHelp {
         val stringKey = "Test1234"
         val key1 = Charset(Charsets.UsAscii).encode(stringKey).toUByteArray()
 
+        fun smallBufTest(cipher: Cipher) {
+            cipher.apply {
+                val payload = UByteBuffer(CryptoTestHelp.payload)
+                var encrypted = UByteBuffer(this.engine.blockSize)
+                var decrypted = UByteBuffer(this.engine.blockSize)
+                runBlocking {
+                    process(true, input = { payload }) {
+                        encrypted = it
+                    }
+                    process(false, input = { encrypted }) {
+                        decrypted = it
+                    }
+                    assertEquals(0, decrypted.compareTo(encrypted))
+                }
+            }
+        }
         fun process(cipher: BlockCipher, payload: UByteBuffer): UByteBuffer {
             val blockIn = UByteArray((cipher.blockSize))
             val blockOut = UByteArray((cipher.blockSize))

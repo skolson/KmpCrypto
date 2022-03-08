@@ -1,35 +1,51 @@
 package com.oldguy.crypto
 
-import com.oldguy.common.io.Charset
-import com.oldguy.common.io.Charsets
-
-/**
- * Factory pattern helpers for creating a fully configured block cipher, and also setting the
- * key information for encryption and decryption.
- */
+import com.oldguy.common.io.*
 
 /**
  * These are the supported chaining modes that can be applied to any of the selected engines
  */
 enum class CipherModes { None, CBC, CFB, CCM, GCM, ECB }  // PCBC, OFB
+
+/**
+ * Available padding schemes.
+ */
 enum class Paddings { None, PKCS7 }   // SSL3Padding, ISO10126Padding
 
 /**
- * Use in conjunction with the makeCipher function to configure and build a cipher for use in
+ * These are the supported Digests that can be used in the key builder any time a key needs to
+ * be hashed to a specific length.
+ */
+enum class Digests {
+    None, SHA1, SHA256, SHA384, SHA512, MD5, MD4, MD2,
+    RIPEMD128, RIPEMD160, Whirlpool
+}
+
+
+/**
+ * See [build] companion function to configure and build a cipher for use in
  * encryption/descryption operations.
 
- * A DSL-like syntax offers flexibility for setting up a cipher.
- * For example. this syntax:
- *      val cipher = makeCipher {
- *          engine { aes() }
- *          chaining = Chaining.CBC
- *         padding = Paddings.PKCS7
- *      }
- *
- * configure a cipher with AES, CBC chaining, and PKCS7 padding
+ * A DSL-like syntax offers flexibility for setting up a cipher and its key.
+ * CipherV2.build {
+ *     engine { aes() }
+ *     mode = CipherModes.CBC
+ *     padding = Paddings.PKCS7
+ *     key {
+ *         stringKeyCharset = Charset(Charsets.Utf16le)
+ *         stringKey = "SomeKey"
+ *         hashKeyLengthBits = 256
+ *         keyDigest = Digests.SHA256
+ *     }
+ * }
+ * configures a cipher with AES, CBC chaining, and PKCS7 padding. It also sets the key to a string
+ * value encoded with UTF-16 Little Endian encoding.
  */
-class CipherBuilder {
-    var engineParm: BlockCipher? = null
+class Cipher {
+    lateinit var keyConfiguration: KeyConfiguration
+    lateinit var parameters: CipherParameters
+
+    lateinit var engine: BlockCipher
 
     /**
      * Any of the algorithm modes in [CipherModes] can be used with any engine. Default is none.
@@ -71,7 +87,7 @@ class CipherBuilder {
         if (tokens.isEmpty() || tokens.size > 3 || tokens[0].isEmpty())
             throw IllegalArgumentException(error)
         val e = Engine()
-        engineParm = when (tokens[0]) {
+        engine = when (tokens[0]) {
             "AES" -> e.aes()
             "RC2" -> e.rc2()
             "RC4" -> e.rc4()
@@ -131,220 +147,233 @@ class CipherBuilder {
     }
 
     inline fun engine(arg: Engine.() -> BlockCipher) {
-        engineParm = Engine().arg()
+        engine = Engine().arg()
     }
 
-    fun build(): BlockCipher {
-        val wrk = engineParm ?: throw IllegalStateException("Must supply an engine")
-        val modeEngine = when (mode) {
-            CipherModes.None -> wrk
-            CipherModes.CBC -> CBCBlockCipher(wrk)
-            CipherModes.CFB -> CFBBlockCipher(wrk, cfbBitSize)
-            CipherModes.CCM -> CCMBlockCipher(wrk)
-            CipherModes.GCM -> GCMBlockCipher(wrk)
-            CipherModes.ECB -> ECBBlockCipher(wrk)
+    inline fun key(arg: KeyConfiguration.() -> Unit) {
+        keyConfiguration = KeyConfiguration().apply { arg() }.apply {
+            parameters = build()
         }
-        val built = when (padding) {
-            Paddings.None -> modeEngine
-            Paddings.PKCS7 -> PaddedBufferedBlockCipher(modeEngine)
-        }
-        return built
-    }
-}
-
-/**
- * These are the supported Digests that can be used in the key builder any time a key needs to
- * be hashed to a specific length.
- */
-enum class Digests {
-    None, SHA1, SHA256, SHA384, SHA512, MD5, MD4, MD2,
-    RIPEMD128, RIPEMD160, Whirlpool
-}
-
-/**
- * This builder assists with building key info for a particular engine.
- * It is fairly easy currently to configure a key that is not consistent with the associated cipher.
- * If a key is built without the correct options, the engine will throw an IllegalArgumentException
- * at during the cipher.init(...). @see initializeKey function that configures a key and invokes
- * the cipher.init() function
- * Different engines use differing flavors of keys.
- *
- * Example of the DSL-type syntax:
- *  val key = initializeKey(cipher) {
- *      keyFromString("Test1234")
- *      forEncryption = false
- *  }
- *
- *  This example constructs a KeyParameter, with the String decoded into bytes using the default
- *  US-ASCII charset. It also overrides the default forEncyption flag, indicating key is used for
- *  decryption not encryption.
- *
- *  See the builders various properties and functions for details on how keys can be configured.
- */
-class CipherKeyBuilder {
-    /**
-     * true for encryption, false for decryption.
-     */
-    var forEncryption = true
-
-    /**
-     * An array of bytes which is the key used. Note that if a Digest is also configured and
-     * a hashKeyLength is set, this value will be changed to the hash value at build time. See
-     * var [stringKey] and fun [keyFromString] for alternate ways to set [key]
-     */
-    var key = UByteArray(0)
-
-    /**
-     * Setting this also sets [key] to the encoded value of this string using UTF-8. If other
-     * charset is desired, use [keyFromString] function instead of setting key or stringKey
-     * properties.
-     */
-    var stringKey = ""
-        set(value) {
-            field = value
-            keyFromString(value)
-        }
-
-    /**
-     * Set this to a UByteArray containing the Initialization Vector desired for the cipher.
-     */
-    var iv = UByteArray(0)
-
-    /**
-     * Set this to a Digest algorithm if the cipher requires fixed length keys.  [hashKeyLength] must
-     * also be set.  At build time the selected hash algorithm will be applied to the [key] value.
-     * [key] will be changed to a new UByteArray of [hashKeyLength] length, containing the hash result.
-     * Default is no Digest, leaving the bytes in [key] unchanged.
-     */
-    var keyDigest: Digests = Digests.None
-
-    /**
-     * Use in conjunction with the keyDigest configured. Specified in Bytes
-     */
-    var hashKeyLength = 0
-        set(value) {
-            field = value
-            if (value <= 16 || value > 512) throw IllegalArgumentException("Key length in bytes must be between 16 and 512")
-        }
-
-    var hashKeyLengthBits = hashKeyLength * 8
-        get() = hashKeyLength * 8
-        set(value) {
-            field = value
-            if (value % 8 > 0) throw IllegalArgumentException("Key length in bits must be a multiple of 8")
-            hashKeyLength = value / 8
-        }
-
-    /**
-     * Assign a configured instance of a SecureRandom source to be used for cryptographically strong
-     * random number generation. Default is none.
-     */
-    var secureRandom: SecureRandom? = null
-
-    var macSize = 0
-    private var nonce = UByteArray(0)
-    private var associatedText = UByteArray(0)
-
-    /**
-     * Convenience method to convert a String to a [key], using the specified [Charset].
-     *
-     * @param keyString any non-empty string.
-     * @param charset defaults to US-ASCII, used to change the String into bytes
-     */
-    fun keyFromString(keyString: String, charset: Charset = Charset(Charsets.Utf8)) {
-        key = charset.encode(keyString).toUByteArray()
     }
 
-    /**
-     * Set the required attributes for encryption using AEAD (Authenticated Encryption with
-     * Associated Data). Currently only GCM and CCM chaining modes support use of this.
-     *
-     * @param macSize must be between 32 and 128, in multiples of 8.
-     * @param nonce
-     * @param associatedText defaults to none.
-     *
-     * @see <a href="https://en.wikipedia.org/wiki/Authenticated_encryption#Authenticated_encryption_with_associated_data_(AEAD)">Wikipedia on Authenticated Encryption</a>
-     */
-    fun authenticatedEncryptionAssociatedData(
-        macSize: Int,
-        nonce: UByteArray,
-        associatedText: UByteArray = UByteArray(0)
-    ) {
-        this.macSize = macSize
-        this.nonce = nonce
-        this.associatedText = associatedText
-    }
-
-    fun build(cipher: BlockCipher): CipherParameters {
-        var tempKey = key
-        val tempDigest = keyDigest
-        if (hashKeyLength > 0) {
-            if (tempDigest != Digests.None) {
-                val digestImpl = when (tempDigest) {
-                    Digests.SHA1 -> SHA1Digest()
-                    Digests.SHA256 -> SHA256Digest()
-                    Digests.SHA384 -> SHA384Digest()
-                    Digests.SHA512 -> SHA512Digest()
-                    Digests.MD5 -> MD5Digest()
-                    Digests.MD4 -> MD4Digest()
-                    Digests.MD2 -> MD2Digest()
-                    Digests.RIPEMD128 -> RIPEMD128Digest()
-                    Digests.RIPEMD160 -> RIPEMD160Digest()
-                    Digests.Whirlpool -> WhirlpoolDigest()
-                    else -> throw IllegalStateException("should never happen :-)")
-                }
-                tempKey = digestImpl.hash(key, resultLen = hashKeyLength)
+    fun build(): Cipher {
+        engine.apply {
+            val modeEngine = when (mode) {
+                CipherModes.None -> this
+                CipherModes.CBC -> CBCBlockCipher(this)
+                CipherModes.CFB -> CFBBlockCipher(this, cfbBitSize)
+                CipherModes.CCM -> CCMBlockCipher(this)
+                CipherModes.GCM -> GCMBlockCipher(this)
+                CipherModes.ECB -> ECBBlockCipher(this)
+            }
+            engine = when (padding) {
+                Paddings.None -> modeEngine
+                Paddings.PKCS7 -> PaddedBufferedBlockCipher(modeEngine)
             }
         }
-        val keyParm = KeyParameter(tempKey)
-        val parm = if (macSize > 0)
-            AEADParameters(keyParm, macSize, iv, associatedText)
-        else
-            secureRandom?.let { ParametersWithRandom(keyParm, it) }
-                ?: if (iv.isNotEmpty())
-                    ParametersWithIV(keyParm, iv)
-                else
-                    keyParm
-        cipher.init(forEncryption, parm)
-        return parm
+        return this
     }
-}
-
-/**
- * functions and constants to assis with use of encryption/decryption functions.
- */
-object Cipher {
-    /**
-     * @see CipherBuilder for info about using this function to create and configure a cipher.
-     */
-    fun makeCipher(lambda: CipherBuilder.() -> Unit) = CipherBuilder().apply(lambda).build()
 
     /**
-     * For an existing Cipher, build a key using the [CipherKeyBuilder] in a DSL-like fashion. Use the
-     * lambda to fully configure the key.  The function will instantiate the appropriate key which will
-     * be a subclass of the [CipherParameters] interface. It then calls the init function of the
-     * specified cipher, which syntaxes the key and will throw an exception if an error is found.
-     *
-     * @param cipher typically from the [makeCipher] function.  Use this any time a key is changed,
-     * or operation is changing from encryption to decryption or vice versa.
-     *
-     * @see CipherKeyBuilder for option information in the lambda
+     * Initializes the configured Cipher, then repeatedly calls the input function to get input data.
+     * Process ends when input is called with an empty (!hasRemaining) buffer.  Output is called
+     * once for each processed block, with a buffer positined at zero and remaining = bytes produced.
+     * @param encrypt true if input data is being encrypted. False if input data is being decrypted.
+     * @param input lambda should provide buffers until all input data is processed. Note that every
+     * block cipher has a block size, and that the incoming buffers should be a non zero multiple of
+     * that block size in length until the last bloc, which can be any size.
+     * @param output lambda is invoked once for each output block.  If
      */
-    fun initializeKey(cipher: BlockCipher, lambda: CipherKeyBuilder.() -> Unit): CipherParameters {
-        val builder = CipherKeyBuilder()
-        builder.apply(lambda)
-        return builder.build(cipher)
+    suspend fun process(
+        encrypt: Boolean,
+        input: suspend () -> UByteBuffer,
+        output: suspend (buffer: UByteBuffer) -> Unit
+    ) {
+        engine.init(encrypt, parameters)
+        val blockSize = engine.blockSize
+        var buf = input()
+        while (buf.hasRemaining) {
+            val blockIn = UByteArray(blockSize)
+            val blockOut = UByteArray(blockSize)
+            val outBuf = UByteBuffer(1024)
+            var totalLength = 0
+            while (buf.hasRemaining) {
+                if (buf.remaining < blockSize)
+                    blockIn.fill(0u)
+                buf.getBytes(blockIn)
+                val length = engine.processBlock(blockIn, 0, blockOut, 0)
+                if (length > outBuf.remaining)
+                    throw IllegalStateException("buf capacity exceeded")
+                outBuf.putBytes(blockOut)
+                totalLength += length
+            }
+            outBuf.rewind()
+            output(outBuf.slice(totalLength))
+            buf = input()
+        }
+    }
+
+    suspend fun process(
+        encrypt: Boolean,
+        inFile: RawFile,
+        outFile: RawFile
+    ) {
+        inFile.blockSize = engine.blockSize.toUInt()
+        val buf = UByteBuffer(engine.blockSize)
+        process(encrypt,
+            input = {
+                inFile.read(buf)
+                buf
+            }
+        ) {
+            outFile.write(it)
+        }
+        outFile.close()
+        inFile.close()
+    }
+
+    companion object {
+        fun build(lambda: Cipher.() -> Unit): Cipher {
+            return Cipher()
+                .apply(lambda)
+                .build()
+        }
+    }
+
+    /**
+     * This builder assists with building key info for a particular engine.
+     * It is fairly easy currently to configure a key that is not consistent with the associated cipher.
+     * If a key is built without the correct options, the engine will throw an IllegalArgumentException
+     * at during the cipher.init(...). @see initializeKey function that configures a key and invokes
+     * the cipher.init() function
+     * Different engines use differing flavors of keys.
+     *
+     * Example of the DSL-type syntax:
+     *  val key = initializeKey(cipher) {
+     *      keyFromString("Test1234")
+     *      forEncryption = false
+     *  }
+     *
+     *  This example constructs a KeyParameter, with the String decoded into bytes using the default
+     *  US-ASCII charset. It also overrides the default forEncyption flag, indicating key is used for
+     *  decryption not encryption.
+     *
+     *  See the builders various properties and functions for details on how keys can be configured.
+     */
+    class KeyConfiguration {
+        /**
+         * An array of bytes which is the key used. Note that if a Digest is also configured and
+         * a hashKeyLength is set, this value will be changed to the hash value at build time. See
+         * vars [stringKey] and [stringKeyCharset] for setting [key] from a String.
+         */
+        var key = UByteArray(0)
+
+        /**
+         * When using [stringKey], use this charset to encode the string into bytes for the true key.
+         * This must be set before setting [stringKey]
+         */
+        var stringKeyCharset = Charset(Charsets.Utf8)
+        /**
+         * Setting this also sets [key] to the encoded value of this string using [stringKeyCharset].
+         */
+        var stringKey = ""
+            set(value) {
+                field = value
+                key = stringKeyCharset.encode(value).toUByteArray()
+            }
+
+
+        /**
+         * Set this to a UByteArray containing the Initialization Vector desired for the cipher.
+         */
+        var iv = UByteArray(0)
+
+        /**
+         * Set this to a Digest algorithm if the cipher requires fixed length keys.  [hashKeyLength] must
+         * also be set.  At build time the selected hash algorithm will be applied to the [key] value.
+         * [key] will be changed to a new UByteArray of [hashKeyLength] length, containing the hash result.
+         * Default is no Digest, leaving the bytes in [key] unchanged.
+         */
+        var keyDigest: Digests = Digests.None
+
+        /**
+         * Use in conjunction with the keyDigest configured. Specified in Bytes
+         */
+        var hashKeyLength = 0
+            set(value) {
+                field = value
+                if (value <= 16 || value > 512) throw IllegalArgumentException("Key length in bytes must be between 16 and 512")
+            }
+
+        var hashKeyLengthBits = hashKeyLength * 8
+            get() = hashKeyLength * 8
+            set(value) {
+                field = value
+                if (value % 8 > 0) throw IllegalArgumentException("Key length in bits must be a multiple of 8")
+                hashKeyLength = value / 8
+            }
+
+        /**
+         * Assign a configured instance of a SecureRandom source to be used for cryptographically strong
+         * random number generation. Default is none.
+         */
+        var secureRandom: SecureRandom? = null
+
+        var macSize = 0
+        private var nonce = UByteArray(0)
+        private var associatedText = UByteArray(0)
+
+        /**
+         * Set the required attributes for encryption using AEAD (Authenticated Encryption with
+         * Associated Data). Currently only GCM and CCM chaining modes support use of this.
+         *
+         * @param macSize must be between 32 and 128, in multiples of 8.
+         * @param nonce
+         * @param associatedText defaults to none.
+         *
+         * @see <a href="https://en.wikipedia.org/wiki/Authenticated_encryption#Authenticated_encryption_with_associated_data_(AEAD)">Wikipedia on Authenticated Encryption</a>
+         */
+        fun authenticatedEncryptionAssociatedData(
+            macSize: Int,
+            nonce: UByteArray,
+            associatedText: UByteArray = UByteArray(0)
+        ) {
+            this.macSize = macSize
+            this.nonce = nonce
+            this.associatedText = associatedText
+        }
+
+        fun build(): CipherParameters {
+            var tempKey = key
+            val tempDigest = keyDigest
+            if (hashKeyLength > 0) {
+                if (tempDigest != Digests.None) {
+                    val digestImpl = when (tempDigest) {
+                        Digests.SHA1 -> SHA1Digest()
+                        Digests.SHA256 -> SHA256Digest()
+                        Digests.SHA384 -> SHA384Digest()
+                        Digests.SHA512 -> SHA512Digest()
+                        Digests.MD5 -> MD5Digest()
+                        Digests.MD4 -> MD4Digest()
+                        Digests.MD2 -> MD2Digest()
+                        Digests.RIPEMD128 -> RIPEMD128Digest()
+                        Digests.RIPEMD160 -> RIPEMD160Digest()
+                        Digests.Whirlpool -> WhirlpoolDigest()
+                        else -> throw IllegalStateException("should never happen :-)")
+                    }
+                    tempKey = digestImpl.hash(key, resultLen = hashKeyLength)
+                }
+            }
+            val keyParm = KeyParameter(tempKey)
+            val parm = if (macSize > 0)
+                AEADParameters(keyParm, macSize, iv, associatedText)
+            else
+                secureRandom?.let { ParametersWithRandom(keyParm, it) }
+                    ?: if (iv.isNotEmpty())
+                        ParametersWithIV(keyParm, iv)
+                    else
+                        keyParm
+            return parm
+        }
     }
 }
-/*
-val cipher = makeCipher {
-    engine { aes() }
-    chaining = Chaining.CBC
-    padding = Paddings.PKCS7
-}
-
-val key = initializeKey(cipher) {
-    keyFromString("Test1234")
-    forEncryption = false
-}
-*/
