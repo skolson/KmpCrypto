@@ -1,6 +1,6 @@
 # Change Log
 
-### 0.1.0 (2022-02)
+### 0.1.0 (2022-03)
 
 - Existing full Android support
 - IOS and Mac using Kotlin Native and new memory model

@@ -44,36 +44,6 @@ class NoopProvider : EncryptionProvider {
     }
 }
 
-/**
- * NIST SP 800-90Ar1 mechanism names for strong randomness. May not be available on all platforms
- */
-@Suppress("UNUSED_PARAMETER")
-enum class SecureRandomMechanism(mechanism: String) {
-    Hash_DRBG("Hash_DRBG"),
-    HMAC_DRBG("HMAC_DRBG"),
-    CTR_DRBG("CTR_DRBG")
-}
-
-/**
- * NIST SP 800-90Ar1 algorithm names for strong randomness. Note that SHA prefix algorithms are
- * for use with [SecureRandomMechanism.Hash_DRBG] and [SecureRandomMechanism.HMAC_DRBG].
- * AES prefix algorithms are for use with [SecureRandomMechanism.CTR_DRBG]
- *
- * May not be available on all platforms
- */
-@Suppress("UNUSED_PARAMETER")
-enum class SecureRandomAlgorithm(algorithm: String) {
-    SHA224("SHA-224"),
-    SHA512_224("SHA-512/224"),
-    SHA256("SHA-256"),
-    SHA512_256("SHA-512/256"),
-    SHA384("SHA-384"),
-    SHA512("SHA-512"),
-    AES128("AES-128"),
-    AES192("AES-192"),
-    AES256("AES-256")
-}
-
 @Suppress("UNUSED_PARAMETER")
 enum class SecureRandomCtr_DRBGCipher(cipherName: String) {
     AES128("AES-128"), AES_192("AES-192"), AES256("AES-256")

@@ -7,6 +7,7 @@ package com.oldguy.crypto
  * Note that Android doesn't offer this flexibilty, so the arguments passed in are ignored.  In JVM
  * 9 or later implementations, these arguments do control instantiation
  */
+@ExperimentalUnsignedTypes
 actual class SecureRandom actual constructor(
     mechanism: SecureRandomMechanism,
     algorithm: SecureRandomAlgorithm

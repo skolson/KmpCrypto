@@ -3,7 +3,6 @@
 This is a Kotlin multiplatform (KMP) library for Cryptography, using the same API across all supported platforms.  Implementations are pure Kotlin, patterned on the BouncyCastle Java library. The platform-specific portions of the library, using expect/actual setup to leverage platform-specific implementations, are limited to:
 
 - SecureRandom for random number generation
-
 - [Bouncy Castle](https://www.bouncycastle.org/)
 
 The library is early in its lifecycle so is missing lots of crypto functionality. If you want more, start a repo discussion! :-) 
@@ -72,6 +71,7 @@ At some point the library may be published to the public Maven repository if the
 
 Until that happens, use the gradle Publish task 'publishToMavenLocal' to run a build and publish the artifacts produced to a local maven repository. Note if the publishToMavenLocal task is run on a Mac, it can build **all** the supported targets. Publishing on Linux or Windows will not build the apple targets. 
 
+Android Studio Chipmunk is showing false errors in the IDE on the SecureRandom class which is using the Kotlin expect/actual setup.  The source is correct and Gradle build runs just fine. So if you see syntax error indicators related to ecureRandom, be suspicious.  There seem to be one or more IDE issues related to the gradle.properties setting `kotlin.mpp.enableGranularSourceSetsMetadata=true`, which this project needs since it is using hierarchical source sets.
 ## Dependency
 
 Define the library as a gradle dependency (assumes mavenLocal is defined as a repo in your build.gradle scripts):
