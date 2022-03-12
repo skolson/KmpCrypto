@@ -57,7 +57,7 @@ Kotlin multiplatform code needing basic cryptography functions should not need p
 - Source/Sink lambdas - easy to consume any number of buffers from a Source, and produce any number of encrypted/decrypted bytes to a Sink. 
 
 # Dependencies
-
+git
 Kotlin only is used for the KMP code. The kmp-io library that supports all the same targets is used for basic Charset support (used with String keys), ByteBuffer usage, and basic File IO
 - Kotlin 1.6.10
 - Kotlin atomicfu

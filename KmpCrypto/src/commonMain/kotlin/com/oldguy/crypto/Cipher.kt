@@ -1,6 +1,7 @@
 package com.oldguy.crypto
 
 import com.oldguy.common.io.*
+import com.oldguy.common.toHex
 
 /**
  * These are the supported chaining modes that can be applied to any of the selected engines
@@ -65,6 +66,7 @@ class Cipher {
      */
     var padding = Paddings.None
 
+    var debug = false
     /**
      * Generate a Random IV of the specified size in bytes, using the specified SecureRandom class
      * as a source.
@@ -200,7 +202,7 @@ class Cipher {
     /**
      * Initializes the configured Cipher, then repeatedly calls the input function to get input data.
      * Process ends when input is called with an empty (!hasRemaining) buffer.  Output is called
-     * once for each processed block, with a buffer positined at zero and remaining = bytes produced.
+     * once for each processed block, with a buffer positioned at zero and remaining = bytes produced.
      * @param encrypt true if input data is being encrypted. False if input data is being decrypted.
      * @param input lambda should provide buffers until all input data is processed. Note that every
      * block cipher has a block size, and that the incoming buffers should be a non zero multiple of
@@ -221,23 +223,46 @@ class Cipher {
         val outBuf = ByteBuffer(bufferSize.toInt())
         var readCount = reader.read(blockIn, 0, blockSize)
         var totalRead = readCount.toULong()
+        var totalWrite = 0UL
+        val eng = engine
+        val blockOut = UByteArray(blockSize * 2)
         while (readCount > 0) {
-            val blockOut = UByteArray(blockSize)
-            if (readCount < blockSize)
-                blockIn.fill(0)
-            val length = engine.processBlock(blockIn.toUByteArray(), 0, blockOut, 0)
+            var length: Int
+            if (readCount < blockSize) {
+                when (eng) {
+                    is BufferedBlockCipher -> {
+                        length = eng.processBytes(blockIn.toUByteArray(), 0, readCount, blockOut)
+                        length += eng.doFinal(blockOut, length)
+                    }
+                    is AEADBlockCipher -> {
+                        length = eng.processBytes(blockIn.toUByteArray(), 0, readCount, blockOut, 0)
+                        length += eng.doFinal(blockOut, length)
+                    }
+                    else -> {
+                        val lastBlock = ByteArray(readCount)
+                        blockIn.copyInto(lastBlock, 0, 0, readCount)
+                        length = engine.processBlock(lastBlock.toUByteArray(), 0, blockOut, 0)
+                    }
+                }
+            } else
+                length = engine.processBlock(blockIn.toUByteArray(), 0, blockOut, 0)
             if (length > outBuf.remaining)
                 throw IllegalStateException("buf capacity exceeded")
-            outBuf.putBytes(blockOut.toByteArray())
+            outBuf.putBytes(blockOut.toByteArray(), 0, length)
             if (outBuf.remaining < blockSize) {
-                output(outBuf.flip())
+                outBuf.flip()
+                totalWrite += outBuf.remaining.toUInt()
+                output(outBuf)
                 outBuf.clear()
             }
             readCount = reader.read(blockIn, 0, blockSize)
             totalRead += readCount.toULong()
         }
-        if (outBuf.position > 0)
-            output(outBuf.flip())
+        if (outBuf.position > 0) {
+            outBuf.flip()
+            totalWrite += outBuf.remaining.toUInt()
+            output(outBuf)
+        }
         return totalRead
     }
 
@@ -257,16 +282,19 @@ class Cipher {
     ): ULong {
         inFile.blockSize = engine.blockSize.toUInt()
         val buf = ByteBuffer(bufferSize.toInt())
+        var bytesIn = 0UL
+        var bytesOut = 0UL
+        var blocksIn = 0
         try {
-            if (encrypt && keyConfiguration.iv.isNotEmpty()) {
-                outFile.write(UByteBuffer(keyConfiguration.iv))
-            }
             return process(encrypt,
                 input = {
-                    inFile.read(buf)
-                    buf
+                    buf.clear()
+                    bytesIn += inFile.read(buf)
+                    blocksIn++
+                    buf.flip()
                 }
             ) {
+                bytesOut += it.remaining.toUInt()
                 outFile.write(it)
             }
         } finally {

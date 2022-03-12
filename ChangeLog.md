@@ -1,5 +1,9 @@
 # Change Log
 
+### 0.1.1
+
+- Cipher file encryption/decryption fixes.
+
 ### 0.1.0 (2022-03)
 
 - Existing full Android support

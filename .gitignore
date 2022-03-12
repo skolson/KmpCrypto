@@ -4,6 +4,6 @@
 /build/
 /KmpCrypto/build/
 /KmpCrypto/.gradle/
-/TestFiles/Work/
 *.iml
 /KmpCrypto/local.properties
+/KmpCrypto/TestFiles/Work/

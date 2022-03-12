@@ -958,7 +958,7 @@ class GCMBlockCipher(c: BlockCipher, m: GCMMultiplier = Tables4kGCMMultiplier())
         var extra = bufOff
         if (forEncryption) {
             if (out.size - outOffset < extra + macSize) {
-                throw IllegalArgumentException("Output buffer too short")
+                throw IllegalArgumentException("Encryption output buffer too short. Size: ${out.size}, free = ${out.size-outOffset}, required: ${extra + macSize}")
             }
         } else {
             if (extra < macSize) {

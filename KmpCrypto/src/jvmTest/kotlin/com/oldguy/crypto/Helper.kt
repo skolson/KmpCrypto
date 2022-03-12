@@ -1,9 +1,6 @@
 package com.oldguy.crypto
 
-import com.oldguy.common.io.ByteBuffer
-import com.oldguy.common.io.Charset
-import com.oldguy.common.io.Charsets
-import com.oldguy.common.io.UByteBuffer
+import com.oldguy.common.io.*
 import kotlinx.coroutines.runBlocking
 import kotlin.test.assertEquals
 
@@ -73,6 +70,40 @@ class CryptoTestHelp {
             return buf.slice(totalLength)
         }
 
+        suspend fun compare(source: File, source2: File): Boolean {
+            val r1 = RawFile(source)
+            val r2 = RawFile(source2)
+            var counter = 0UL
+            val bufSize = 4096
+            val b1 = ByteBuffer(bufSize)
+            val b2 = ByteBuffer(bufSize)
+            r1.read(b1)
+            b1.flip()
+            r2.read(b2)
+            b2.flip()
+            var diff = false
+            while (b1.hasRemaining) {
+                for (i in 0 until bufSize) {
+                    if (b1.byte == b2.byte) counter++
+                    else {
+                        println("${source.name} comparison ${source2.name} differ starting at position: $counter")
+                        diff = true
+                        break
+                    }
+                }
+                if (diff) break
+                b1.clear()
+                r1.read(b1)
+                b1.flip()
+                b2.clear()
+                r2.read(b2)
+                b2.flip()
+            }
+            r1.close()
+            r2.close()
+            assertEquals(source.size, source2.size)
+            return true
+        }
     }
 }
 

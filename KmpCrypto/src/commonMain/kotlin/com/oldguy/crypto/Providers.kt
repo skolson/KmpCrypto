@@ -5,10 +5,14 @@ import com.oldguy.common.io.Charset
 import com.oldguy.common.io.Charsets
 import kotlin.experimental.xor
 
+/**
+ * Basic interface for a provider of encrypt/decrypt functions that isn't a standard [BlockCipher].
+ * Limited usefulness since only current implementations are legacy engines that aren't very secure.
+ */
 interface EncryptionProvider {
     val name: String
 
-    fun initialize(key: ByteArray)
+    fun initialize(keyBytes: ByteArray)
 
     /**
      * Return a new ByteBuffer containing decrypted bytes starting at buf.position for buf.remaining
@@ -32,7 +36,7 @@ interface EncryptionProvider {
 class NoopProvider : EncryptionProvider {
     override val name = "None"
 
-    override fun initialize(key: ByteArray) {
+    override fun initialize(keyBytes: ByteArray) {
     }
 
     override fun encrypt(buf: ByteBuffer): ByteBuffer {
@@ -68,18 +72,18 @@ class RC4Provider(
     private var x = 0
     private var y = 0
 
-    override fun initialize(key: ByteArray) {
+    override fun initialize(keyBytes: ByteArray) {
         for (i in 0 until stateLength) {
             engineState[i] = i.toByte()
         }
         var i1 = 0
         var i2 = 0
         for (i in 0 until stateLength) {
-            i2 = ((key[i1].toInt() and 0xff) + engineState[i].toInt() + i2) and 0xff
+            i2 = ((keyBytes[i1].toInt() and 0xff) + engineState[i].toInt() + i2) and 0xff
             val tmp = engineState[i]
             engineState[i] = engineState[i2]
             engineState[i2] = tmp
-            i1 = (i1 + 1) % key.size
+            i1 = (i1 + 1) % keyBytes.size
         }
         x = 0
         y = 0

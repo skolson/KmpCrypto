@@ -17,7 +17,7 @@ plugins {
 val mavenArtifactId = "kmp-crypto"
 val appleFrameworkName = "KmpCrypto"
 group = "com.oldguy"
-version = "0.1.0"
+version = "0.1.1"
 
 val androidMinSdk = 26
 val androidTargetSdkVersion = 32
@@ -154,7 +154,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.0")
-                implementation("com.oldguy:kmp-io:0.1.1")
+                implementation("com.oldguy:kmp-io:0.1.2")
             }
         }
         val commonTest by getting {
@@ -214,7 +214,7 @@ kotlin {
             dependsOn(commonTest)
             dependencies {
                 implementation(kotlinCoroutinesTest)
-                implementation("org.bouncycastle:bcprov-jdk15on:1.66")
+                implementation("org.bouncycastle:bcprov-jdk15on:1.70")
             }
         }
         all {

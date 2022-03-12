@@ -9,7 +9,7 @@ class SHA1DigestTests {
     @Test
     fun sha1Disgest() {
         val digest = SHA1Digest()
-        val hash = digest.hash(CryptoTestHelp.payload, UByteArray(0))
+        val hash = digest.hash(CryptoTestHelp.payload)
 
         val javaDigest = org.bouncycastle.crypto.digests.SHA1Digest()
         javaDigest.update(CryptoTestHelp.payload.toByteArray(), 0, CryptoTestHelp.payload.size)
