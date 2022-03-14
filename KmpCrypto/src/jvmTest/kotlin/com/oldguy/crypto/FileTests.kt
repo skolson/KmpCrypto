@@ -13,7 +13,6 @@ import kotlin.test.assertTrue
 class FileTests {
     private val testZipName = "ZerosZip64.zip"
     val password = "xyzAbc!@#"
-    private val testIV = byteArrayOf(-65, -45, 34, -107, -33, -96, -36, -60, -124, -67, -109, 25).toUByteArray()
 
     @Test
     fun fileAesGcm() {
@@ -30,7 +29,7 @@ class FileTests {
                     keyDigest = Digests.SHA256
                     hashKeyLengthBits = 256
                     macSize = 128
-                    iv = testIV
+                    iv = randomIV()
                 }
             }
             val ivContent = cipher.keyConfiguration.iv
@@ -47,7 +46,7 @@ class FileTests {
             assertTrue(zipEncrypted.exists)
 
             val b = bouncyEncrypt(workDirectory, zipFile, ivContent)
-            CryptoTestHelp.compare(zipEncrypted, b)
+            assertTrue(CryptoTestHelp.compare(zipEncrypted, b))
 
             val check = RawFile(zipEncrypted)
             val buf = ByteBuffer(1)
@@ -63,8 +62,6 @@ class FileTests {
             decryptFile.delete()
             val zipDecrypted = RawFile(decryptFile, FileMode.Write)
             cipher.process(false, check, zipDecrypted)
-
-
         }
     }
 

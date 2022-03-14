@@ -2,6 +2,7 @@ package com.oldguy.crypto
 
 import com.oldguy.common.io.RawFile
 import com.oldguy.common.io.UByteBuffer
+import com.oldguy.common.toHex
 
 /**
  * This source is adapted from Bouncycastle and is intended to provide a multi-platform implementation
@@ -286,7 +287,7 @@ open class BufferedBlockCipher(var cipher: BlockCipher, partialOk: Boolean = fal
             }
             if (bufOff != 0) {
                 if (!partialBlockOkay) {
-                    throw IllegalArgumentException("data not block size aligned")
+                    throw IllegalArgumentException("data not block size aligned. bufOff: $bufOff, content: ${buf.toHex()}")
                 }
                 cipher.processBlock(buf, 0, buf, 0)
                 resultLen = bufOff

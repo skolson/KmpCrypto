@@ -1,8 +1,8 @@
 package com.oldguy.crypto
 
 import com.oldguy.common.io.*
-import kotlinx.coroutines.runBlocking
 import kotlin.test.assertEquals
+import kotlin.test.fail
 
 @ExperimentalUnsignedTypes
 class CryptoTestHelp {
@@ -12,20 +12,25 @@ class CryptoTestHelp {
         val stringKey = "Test1234"
         val key1 = Charset(Charsets.UsAscii).encode(stringKey).toUByteArray()
 
-        fun smallBufTest(cipher: Cipher) {
+        suspend fun singleBufferTest(cipher: Cipher) {
             cipher.apply {
-                val payload = ByteBuffer(CryptoTestHelp.payload.toByteArray())
-                var encrypted = ByteBuffer(this.engine.blockSize)
-                var decrypted = ByteBuffer(this.engine.blockSize)
-                runBlocking {
-                    process(true, input = { payload }) {
-                        encrypted = it
-                    }
-                    process(false, input = { encrypted }) {
-                        decrypted = it
-                    }
-                    assertEquals(0, decrypted.compareTo(encrypted))
+                val payloadBuf = UByteBuffer(payload)
+                val encrypted = UByteBuffer(bufferSize.toInt())
+                val decrypted = UByteBuffer(bufferSize.toInt())
+                process(true, input = { payloadBuf }) {
+                    if (it.remaining > encrypted.remaining)
+                        fail("Encrypt too large for test. size: ${it.remaining}, cap: ${encrypted.capacity}, remaining: ${encrypted.remaining}")
+                    encrypted.put(it)
                 }
+                encrypted.flip()
+                process(false, input = { encrypted }) {
+                    if (it.remaining > encrypted.remaining)
+                        fail("Decrypt too large for test. size: ${it.remaining}, cap: ${decrypted.capacity}, remaining: ${decrypted.remaining}")
+                    decrypted.put(it)
+                }
+                encrypted.flip()
+                decrypted.flip()
+                assertEquals(0, decrypted.compareTo(encrypted))
             }
         }
 
@@ -102,7 +107,7 @@ class CryptoTestHelp {
             r1.close()
             r2.close()
             assertEquals(source.size, source2.size)
-            return true
+            return diff
         }
     }
 }

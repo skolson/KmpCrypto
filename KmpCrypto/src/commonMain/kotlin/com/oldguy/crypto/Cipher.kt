@@ -140,7 +140,8 @@ class Cipher {
     }
 
     /**
-     * These functions supply the available engine
+     * These functions supply the available engine. Note that a BufferedBlockCipher is usable with partial
+     * blocks on PGP, CFB, OFB, OpenPGP, SIC, GCTR and so can be wrapped here when/if those are supported
      */
     class Engine {
         fun aes(): BlockCipher {
@@ -183,7 +184,7 @@ class Cipher {
 
     fun build(): Cipher {
         engine.apply {
-            val modeEngine = when (mode) {
+            val eng = when (mode) {
                 CipherModes.None -> this
                 CipherModes.CBC -> CBCBlockCipher(this)
                 CipherModes.CFB -> CFBBlockCipher(this, cfbBitSize)
@@ -192,8 +193,8 @@ class Cipher {
                 CipherModes.ECB -> ECBBlockCipher(this)
             }
             engine = when (padding) {
-                Paddings.None -> modeEngine
-                Paddings.PKCS7 -> PaddedBufferedBlockCipher(modeEngine)
+                Paddings.None -> eng
+                Paddings.PKCS7 -> PaddedBufferedBlockCipher(eng)
             }
         }
         return this
@@ -213,55 +214,56 @@ class Cipher {
      */
     suspend fun process(
         encrypt: Boolean,
-        input: suspend () -> ByteBuffer,
-        output: suspend (buffer: ByteBuffer) -> Unit
+        input: suspend () -> UByteBuffer,
+        output: suspend (buffer: UByteBuffer) -> Unit
     ): ULong {
-        engine.init(encrypt, parameters)
-        val blockSize = engine.blockSize
-        val reader = BufferReader( input )
-        val blockIn = ByteArray(blockSize)
-        val outBuf = ByteBuffer(bufferSize.toInt())
-        var readCount = reader.read(blockIn, 0, blockSize)
-        var totalRead = readCount.toULong()
-        var totalWrite = 0UL
+        var totalRead = 0UL
         val eng = engine
-        val blockOut = UByteArray(blockSize * 2)
-        while (readCount > 0) {
-            var length: Int
-            if (readCount < blockSize) {
-                when (eng) {
-                    is BufferedBlockCipher -> {
-                        length = eng.processBytes(blockIn.toUByteArray(), 0, readCount, blockOut)
-                        length += eng.doFinal(blockOut, length)
-                    }
+        eng.apply {
+            init(encrypt, parameters)
+            var inBuffer = input()
+            val outBlock = UByteBuffer(bufferSize.toInt() * 2)
+            while (inBuffer.hasRemaining) {
+                val b = inBuffer.getBytes().toUByteArray()
+                val readCount = when (this) {
                     is AEADBlockCipher -> {
-                        length = eng.processBytes(blockIn.toUByteArray(), 0, readCount, blockOut, 0)
-                        length += eng.doFinal(blockOut, length)
+                        val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
+                        outBlock.positionLimit(0, r)
+                        r
+                    }
+                    is BufferedBlockCipher ->{
+                        val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
+                        outBlock.positionLimit(0, r)
+                        r
                     }
                     else -> {
-                        val lastBlock = ByteArray(readCount)
-                        blockIn.copyInto(lastBlock, 0, 0, readCount)
-                        length = engine.processBlock(lastBlock.toUByteArray(), 0, blockOut, 0)
+                        if (b.size % blockSize > 0)
+                            throw IllegalArgumentException("Input buffer size: ${b.size} not multiple of blockSize: $blockSize")
+                        var offset = 0
+                        val blockOut = UByteArray(blockSize)
+                        while (offset < b.size) {
+                            engine.processBlock(b, offset, blockOut, 0)
+                            outBlock.putBytes(blockOut)
+                            offset += blockSize
+                        }
+                        outBlock.flip()
+                        b.size
                     }
                 }
-            } else
-                length = engine.processBlock(blockIn.toUByteArray(), 0, blockOut, 0)
-            if (length > outBuf.remaining)
-                throw IllegalStateException("buf capacity exceeded")
-            outBuf.putBytes(blockOut.toByteArray(), 0, length)
-            if (outBuf.remaining < blockSize) {
-                outBuf.flip()
-                totalWrite += outBuf.remaining.toUInt()
-                output(outBuf)
-                outBuf.clear()
+                output(outBlock)
+                totalRead += readCount.toUInt()
+                inBuffer = input()
             }
-            readCount = reader.read(blockIn, 0, blockSize)
-            totalRead += readCount.toULong()
-        }
-        if (outBuf.position > 0) {
-            outBuf.flip()
-            totalWrite += outBuf.remaining.toUInt()
-            output(outBuf)
+            outBlock.clear()
+            val last = when (this) {
+                is AEADBlockCipher -> doFinal(outBlock.contentBytes, 0)
+                is BufferedBlockCipher -> doFinal(outBlock.contentBytes, 0)
+                else -> 0
+            }
+            if (last > 0) {
+                outBlock.positionLimit(0, last)
+                output(outBlock)
+            }
         }
         return totalRead
     }
@@ -281,20 +283,15 @@ class Cipher {
         outFile: RawFile
     ): ULong {
         inFile.blockSize = engine.blockSize.toUInt()
-        val buf = ByteBuffer(bufferSize.toInt())
-        var bytesIn = 0UL
-        var bytesOut = 0UL
-        var blocksIn = 0
+        val buf = UByteBuffer(bufferSize.toInt())
         try {
             return process(encrypt,
                 input = {
                     buf.clear()
-                    bytesIn += inFile.read(buf)
-                    blocksIn++
+                    inFile.read(buf)
                     buf.flip()
                 }
             ) {
-                bytesOut += it.remaining.toUInt()
                 outFile.write(it)
             }
         } finally {
@@ -352,14 +349,19 @@ class Cipher {
                 key = stringKeyCharset.encode(value).toUByteArray()
             }
 
+        /**
+         * In most cases if an Initialization Vector is used, it should be the same size as the block
+         * size of the engine used. Set this to false to allow other sizes to be used.
+         */
+        var ivSizeMatchBlock = true
 
         /**
          * Set this to a UByteArray containing the Initialization Vector desired for the cipher.
          */
         var iv = UByteArray(0)
             set(value) {
-                if (value.isNotEmpty() && value.size != ivSize)
-                    throw IllegalArgumentException("If specified, IV size must be same as block size: $ivSize")
+                if (ivSizeMatchBlock && value.isNotEmpty() && value.size != ivSize)
+                    throw IllegalArgumentException("If specified, IV size: ${value.size} must be same as block size: $ivSize")
                 field = value
             }
 

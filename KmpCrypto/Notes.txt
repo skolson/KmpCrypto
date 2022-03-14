@@ -1,4 +1,8 @@
+
+Test notes
+===================================================================================
 5611756 is correct size for input bytes
+GCM doFinal does hashes in last 16 bytes, dow to difference being there.
 
 Input last block Position: 0, limit: 236, remaining: 236. Content (16 byte blocks):
 0x00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00

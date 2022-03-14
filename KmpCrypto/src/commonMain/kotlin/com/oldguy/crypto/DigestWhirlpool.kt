@@ -203,8 +203,7 @@ class WhirlpoolDigest : ExtendedDigest, Memoable {
     override fun update(bytes: UByte) {
         _buffer[_bufferPos] = bytes
 
-        // System.out.println("adding to buffer = "+_buffer[_bufferPos]);
-        ++_bufferPos
+         ++_bufferPos
         if (_bufferPos == _buffer.size) {
             processFilledBuffer(_buffer, 0)
         }
