@@ -2,7 +2,7 @@
 
 ### 0.1.1
 
-- Cipher file encryption/decryption fixes.
+- Cipher "process" function file encryption/decryption fixes. Add unit test for AES/GCM using random IV to encrypt test Zip file (Zip64 spec) using both this lib and Bouncy Castle. Verify encrypted file contents match. Then decrypt zip and verify content.
 
 ### 0.1.0 (2022-03)
 

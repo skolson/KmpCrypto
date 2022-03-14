@@ -82,10 +82,8 @@ class CryptoTestHelp {
             val bufSize = 4096
             val b1 = ByteBuffer(bufSize)
             val b2 = ByteBuffer(bufSize)
-            r1.read(b1)
-            b1.flip()
-            r2.read(b2)
-            b2.flip()
+            r1.read(b1, true)
+            r2.read(b2, true)
             var diff = false
             while (b1.hasRemaining) {
                 for (i in 0 until bufSize) {
@@ -97,12 +95,8 @@ class CryptoTestHelp {
                     }
                 }
                 if (diff) break
-                b1.clear()
-                r1.read(b1)
-                b1.flip()
-                b2.clear()
-                r2.read(b2)
-                b2.flip()
+                r1.read(b1, true)
+                r2.read(b2, true)
             }
             r1.close()
             r2.close()

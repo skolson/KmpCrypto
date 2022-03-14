@@ -287,9 +287,8 @@ class Cipher {
         try {
             return process(encrypt,
                 input = {
-                    buf.clear()
-                    inFile.read(buf)
-                    buf.flip()
+                    inFile.read(buf, true)
+                    buf
                 }
             ) {
                 outFile.write(it)
@@ -297,6 +296,70 @@ class Cipher {
         } finally {
             outFile.close()
             inFile.close()
+        }
+    }
+
+    /**
+     * Optional convenience function. Reads an Initialization Vector (IV) from the file. Typically
+     * the IV is at the start of the file, i.e. position 0.  If the
+     * file used [writeInitializationVector] to write the IV, then the length of the IV written is
+     * in the first byte of the file.
+     * The number of bytes is read into a UByteArray.
+     * The result is returned, and is also retained in [keyConfiguration].
+     * Note: any prior value in keyConfiguration.iv is overwritten.
+     *
+     * If the file has an IV with no length byte, then specify the length to be retrieved in the second
+     * argument.
+     *
+     * @param encryptedFile that has an IV at the current position, typically position 0.
+     * On return the file position will be just after the IV read, if any.
+     * @param length optional length of IV to read. If -1 (default), then assumes first byte of file is IV
+     * length, see [writeInitializationVector]. if 0, then no IV is read and an empty IV array is
+     * returned. If length > 0, then a byte array is returned
+     * containing the IV. If file does not contain sufficient bytes, an exception is thrown.
+     * @return UByteArray with the IV value, which is also retained in keyConfiguration.iv.
+     */
+    suspend fun readInitializationVector(encryptedFile: RawFile, length: Int = -1): UByteArray {
+        if (length == 0) {
+            keyConfiguration.iv = UByteArray(0)
+        } else {
+            var l = length.toUInt()
+            if (length < 0) {
+                encryptedFile.readBuffer(1u).apply {
+                    if (remaining != 1) throw IllegalStateException("Could not read length byte: $this")
+                    l = byte.toUInt()
+                }
+            }
+            val pos = encryptedFile.position
+            encryptedFile.readUBuffer(l).apply {
+                if (capacity.toUInt() != l)
+                    throw IllegalStateException("Expected $l bytes at position $pos, found $capacity")
+                keyConfiguration.iv = getBytes()
+            }
+        }
+        return keyConfiguration.iv
+    }
+
+    /**
+     * Optional convenience function. Writes the IV, typically to the start of a file (position 0).
+     * Writes the content of the iv property of [keyConfiguration] at the current file position. File must
+     * be write mode or an exception is thrown
+     * @param encyptedFile typically a new file and the IV is the first content written. If file is not
+     * write mode, an exception is thrown
+     * @param writeLength if true, the first byte written is the length of the IV in [keyConfiguration].
+     * If false, just the IV is written.
+     * @return number of bytes written to file.
+     */
+    suspend fun writeInitializationVector(encyptedFile: RawFile, writeLength: Boolean = true): UInt {
+        val l = if (writeLength) 1 else 0
+        UByteBuffer(keyConfiguration.iv.size + l).apply {
+            if (writeLength)
+                byte = keyConfiguration.iv.size.toUByte()
+            putBytes(keyConfiguration.iv)
+            flip()
+            println("Write IV: $contentBytes")
+            encyptedFile.write(this)
+            return capacity.toUInt()
         }
     }
 
@@ -356,10 +419,18 @@ class Cipher {
         var ivSizeMatchBlock = true
 
         /**
+         * Maximum byte count for content of an IV. This is used as a reasonableness check. Override
+         * if required, before using setting the IV either manually or by reading it from a file.
+         */
+        var ivSizeLimit = 32
+
+        /**
          * Set this to a UByteArray containing the Initialization Vector desired for the cipher.
          */
         var iv = UByteArray(0)
             set(value) {
+                if (value.size > ivSizeLimit)
+                    throw IllegalArgumentException("IV must not be larger than $ivSizeLimit. Typical value for this engine is ${ivSize}. Size rejected: ${value.size}")
                 if (ivSizeMatchBlock && value.isNotEmpty() && value.size != ivSize)
                     throw IllegalArgumentException("If specified, IV size: ${value.size} must be same as block size: $ivSize")
                 field = value
