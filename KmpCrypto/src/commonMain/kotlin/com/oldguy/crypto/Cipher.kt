@@ -67,6 +67,10 @@ class Cipher {
     var padding = Paddings.None
 
     var debug = false
+
+    private var processedCount = 0UL
+    private lateinit var outBlock: UByteBuffer
+
     /**
      * Generate a Random IV of the specified size in bytes, using the specified SecureRandom class
      * as a source.
@@ -211,61 +215,97 @@ class Cipher {
      * @param output buffer is of [bufferSize] size. lambda is invoked once each time the buffer is
      * full (or close to it). Buffer is flipped before [output] is called, so the buffer's remaining
      * value is always the number of bytes to retrieve.
+     * @return total number of bytes sent to output function
      */
     suspend fun process(
         encrypt: Boolean,
         input: suspend () -> UByteBuffer,
         output: suspend (buffer: UByteBuffer) -> Unit
     ): ULong {
-        var totalRead = 0UL
+        processedCount = 0u
         val eng = engine
         eng.apply {
             init(encrypt, parameters)
             var inBuffer = input()
-            val outBlock = UByteBuffer(bufferSize.toInt() * 2)
+            outBlock = UByteBuffer(bufferSize.toInt() * 2)
             while (inBuffer.hasRemaining) {
-                val b = inBuffer.getBytes().toUByteArray()
-                val readCount = when (this) {
-                    is AEADBlockCipher -> {
-                        val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
-                        outBlock.positionLimit(0, r)
-                        r
-                    }
-                    is BufferedBlockCipher ->{
-                        val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
-                        outBlock.positionLimit(0, r)
-                        r
-                    }
-                    else -> {
-                        if (b.size % blockSize > 0)
-                            throw IllegalArgumentException("Input buffer size: ${b.size} not multiple of blockSize: $blockSize")
-                        var offset = 0
-                        val blockOut = UByteArray(blockSize)
-                        while (offset < b.size) {
-                            engine.processBlock(b, offset, blockOut, 0)
-                            outBlock.putBytes(blockOut)
-                            offset += blockSize
-                        }
-                        outBlock.flip()
-                        b.size
-                    }
-                }
-                output(outBlock)
-                totalRead += readCount.toUInt()
+                output(processOneBuffer(inBuffer))
                 inBuffer = input()
             }
             outBlock.clear()
+            outBlock.putBytes(finishProcess())
+            outBlock.flip()
+            if (outBlock.hasRemaining) output(outBlock)
+        }
+        return processedCount
+    }
+
+    private fun finishProcess():UByteArray {
+        val eng = engine
+        eng.apply {
+            val finalBytes = UByteArray(blockSize * 2)
             val last = when (this) {
-                is AEADBlockCipher -> doFinal(outBlock.contentBytes, 0)
-                is BufferedBlockCipher -> doFinal(outBlock.contentBytes, 0)
+                is AEADBlockCipher -> doFinal(finalBytes, 0)
+                is BufferedBlockCipher -> doFinal(finalBytes, 0)
                 else -> 0
             }
-            if (last > 0) {
-                outBlock.positionLimit(0, last)
-                output(outBlock)
+            processedCount += last.toUInt()
+            return if (last > 0)
+                finalBytes.sliceArray(0 until last)
+            else
+                UByteArray(0)
+        }
+    }
+
+    private fun processOneBuffer(inBuffer: UByteBuffer): UByteBuffer {
+        val eng = engine
+        eng.apply {
+            val b = inBuffer.getBytes().toUByteArray()
+            processedCount += when (this) {
+                is AEADBlockCipher -> {
+                    val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
+                    outBlock.positionLimit(0, r)
+                    r
+                }
+                is BufferedBlockCipher ->{
+                    val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
+                    outBlock.positionLimit(0, r)
+                    r
+                }
+                else -> {
+                    if (b.size % blockSize > 0)
+                        throw IllegalArgumentException("Input buffer size: ${b.size} not multiple of blockSize: $blockSize")
+                    var offset = 0
+                    val blockOut = UByteArray(blockSize)
+                    while (offset < b.size) {
+                        engine.processBlock(b, offset, blockOut, 0)
+                        outBlock.putBytes(blockOut)
+                        offset += blockSize
+                    }
+                    outBlock.flip()
+                    b.size
+                }
+            }.toUInt()
+            return outBlock
+        }
+    }
+
+    /**
+     * Decrypt one inBuffer that contains entire payload to be encrypted/decrypted. Does same as
+     * [process] function using one and only one input buffer. Also does not require coroutine.
+     * @param encrypt true if input data is being encrypted. False if input data is being decrypted.
+     * @param inBuffer remaining bytes in buffer are processed as entire payload.
+     * @return processed output
+     */
+    fun processOne(encrypt: Boolean, inBuffer: UByteBuffer): UByteBuffer {
+        val eng = engine
+        eng.apply {
+            init(encrypt, parameters)
+            outBlock = UByteBuffer(bufferSize.toInt() * 2)
+            return processOneBuffer(inBuffer).apply {
+                putBytes(finishProcess())
             }
         }
-        return totalRead
     }
 
     /**

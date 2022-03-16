@@ -1,5 +1,9 @@
 # Change Log
 
+### 0.1.2
+
+- Cipher fun processOne added - convenience function for single-payload operations, no coroutine required.
+
 ### 0.1.1
 
 - Cipher "process" function file encryption/decryption fixes. Add unit test for AES/GCM using random IV to encrypt test Zip file (Zip64 spec) using both this lib and Bouncy Castle. Verify encrypted file contents match. Then decrypt zip and verify content.

@@ -23,8 +23,8 @@ class FileTests {
 
     /**
      * Encrypt a text zip64 file, using AES and GCM and a random IV. Encrypt same file with bouncy
-     * castle, compare encrypted files to ensure size and content match.  Decrypt file. Verify Zip
-     * file decrypted content using Zip support.
+     * castle using same key and IV, compare encrypted files to ensure size and content match.
+     * Decrypt file. Verify Zip file decrypted content using Zip support.
      */
     @Test
     fun fileAesGcm() {
