@@ -68,6 +68,16 @@ class Cipher {
 
     var debug = false
 
+    /**
+     * Convenience property for changing key before invoking [process] or [processOne]. Gets or
+     * sets [keyConfiguration] key property
+     */
+    var key: UByteArray
+        get() = keyConfiguration.key
+        set(value) {
+            keyConfiguration.key = value
+        }
+
     private var processedCount = 0UL
     private lateinit var outBlock: UByteBuffer
 

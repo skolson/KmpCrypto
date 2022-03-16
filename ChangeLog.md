@@ -3,6 +3,7 @@
 ### 0.1.2
 
 - Cipher fun processOne added - convenience function for single-payload operations, no coroutine required.
+- Cipher add key property as a convenience accessor for keyConfiguration.key
 
 ### 0.1.1
 
