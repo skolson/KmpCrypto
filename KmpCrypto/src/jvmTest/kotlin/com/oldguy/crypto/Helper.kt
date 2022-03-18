@@ -1,6 +1,7 @@
 package com.oldguy.crypto
 
 import com.oldguy.common.io.*
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.fail
 
@@ -12,67 +13,18 @@ class CryptoTestHelp {
         val stringKey = "Test1234"
         val key1 = Charset(Charsets.UsAscii).encode(stringKey).toUByteArray()
 
-        suspend fun singleBufferTest(cipher: Cipher) {
-            cipher.apply {
-                val payloadBuf = UByteBuffer(payload)
-                val encrypted = UByteBuffer(bufferSize.toInt())
-                val decrypted = UByteBuffer(bufferSize.toInt())
-                process(true, input = { payloadBuf }) {
-                    if (it.remaining > encrypted.remaining)
-                        fail("Encrypt too large for test. size: ${it.remaining}, cap: ${encrypted.capacity}, remaining: ${encrypted.remaining}")
-                    encrypted.put(it)
-                }
-                encrypted.flip()
-                process(false, input = { encrypted }) {
-                    if (it.remaining > encrypted.remaining)
-                        fail("Decrypt too large for test. size: ${it.remaining}, cap: ${decrypted.capacity}, remaining: ${decrypted.remaining}")
-                    decrypted.put(it)
-                }
-                encrypted.flip()
-                decrypted.flip()
-                assertEquals(0, decrypted.compareTo(encrypted))
-            }
-        }
-
-        fun process(cipher: BlockCipher, payload: UByteBuffer): UByteBuffer {
-            val blockIn = UByteArray((cipher.blockSize))
-            val blockOut = UByteArray((cipher.blockSize))
-            val buf = UByteBuffer(1024)
-            var totalLength = 0
-            while (payload.remaining > 0) {
-                if (payload.remaining < cipher.blockSize)
-                    blockIn.fill(0u)
-                payload.getBytes(blockIn)
-                val length = cipher.processBlock(blockIn, 0, blockOut, 0)
-                if (length > buf.remaining)
-                    throw IllegalStateException("buf capacity exceeded")
-                buf.putBytes(blockOut)
-                totalLength += length
-            }
-            buf.rewind()
-            return buf.slice(totalLength)
-        }
-
         fun bouncyProcess(
-            cipher: org.bouncycastle.crypto.BlockCipher,
+            cipher: org.bouncycastle.crypto.BufferedBlockCipher,
             payload: ByteBuffer
         ): ByteBuffer {
-            val blockIn = ByteArray((cipher.blockSize))
-            val blockOut = ByteArray((cipher.blockSize))
-            val buf = ByteBuffer(1024)
-            var totalLength = 0
-            while (payload.remaining > 0) {
-                if (payload.remaining < cipher.blockSize)
-                    blockIn.fill(0)
-                payload.getBytes(blockIn)
-                val length = cipher.processBlock(blockIn, 0, blockOut, 0)
-                if (length > buf.remaining)
-                    throw IllegalStateException("buf capacity exceeded")
-                buf.putBytes(blockOut)
-                totalLength += length
-            }
-            buf.rewind()
-            return buf.slice(totalLength)
+            val in1 = payload.getBytes()
+            val out1 = ByteArray(in1.size * 2)
+            val buf = ByteBuffer(in1.size * 2)
+            val length = cipher.processBytes(in1, 0, in1.size, out1, 0)
+            buf.putBytes(out1, 0, length)
+            val f = cipher.doFinal(out1, 0)
+            buf.putBytes(out1, 0, f)
+            return buf.flip()
         }
 
         suspend fun compare(source: File, source2: File): Boolean {
@@ -102,6 +54,12 @@ class CryptoTestHelp {
             r2.close()
             assertEquals(source.size, source2.size)
             return diff
+        }
+
+        fun singleBufferTest(cipher: Cipher) {
+            val encrypted = cipher.processOne(true, UByteBuffer(payload))
+            val decrypted = cipher.processOne(false, encrypted)
+            assertContentEquals(payload, decrypted.getBytes())
         }
     }
 }

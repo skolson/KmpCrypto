@@ -94,7 +94,7 @@ class CBCBlockCipherMac(
         val blockSize = cipher.blockSize
         val gapLen = blockSize - bufOff
         if (len > gapLen) {
-            bytes.copyInto(buf, bufOff, inOff, bufOff + gapLen)
+            bytes.copyInto(buf, bufOff, inOff, inOff + gapLen)
             cipher.processBlock(buf, 0, mac, 0)
             bufOff = 0
             len -= gapLen
@@ -105,7 +105,7 @@ class CBCBlockCipherMac(
                 inOff += blockSize
             }
         }
-        bytes.copyInto(buf, bufOff, inOff, bufOff + len)
+        bytes.copyInto(buf, bufOff, inOff, inOff + len)
         bufOff += len
     }
 

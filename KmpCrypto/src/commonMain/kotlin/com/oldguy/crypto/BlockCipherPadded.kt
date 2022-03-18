@@ -73,14 +73,12 @@ class PaddedBufferedBlockCipher constructor(
     override fun init(
         forEncryption: Boolean, params: CipherParameters
     ) {
-        reset()
         if (params is ParametersWithRandom) {
             padding.init(params.random)
-            cipher.init(forEncryption, params)
         } else {
             padding.init(SecureRandom())
-            cipher.init(forEncryption, params)
         }
+        super.init(forEncryption, params)
     }
 
     /**
@@ -162,9 +160,9 @@ class PaddedBufferedBlockCipher constructor(
         if (length < 0) {
             throw IllegalArgumentException("Can't have a negative input length!")
         }
-        length = getUpdateOutputSize(length)
-        if (length > 0) {
-            if (outOff + length > out.size) {
+        val outLength = getUpdateOutputSize(length)
+        if (outLength > 0) {
+            if (outOff + outLength > out.size) {
                 throw IllegalArgumentException("output buffer too short")
             }
         }

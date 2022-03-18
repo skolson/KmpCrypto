@@ -13,26 +13,20 @@ import kotlin.test.assertEquals
 class RC4Tests {
     @Test
     fun rc4Small() {
-        val cipher = RC4Engine()
-        val key = KeyParameter(CryptoTestHelp.key1)
-        cipher.init(true, key)
-        val encrypted = UByteArray(CryptoTestHelp.payload.size)
-        val length = cipher.processBytes(
-            CryptoTestHelp.payload,
-            0, CryptoTestHelp.payload.size,
-            encrypted, 0
-        )
+        val cipher = Cipher.build {
+            engine { rc4() }
+            key {
+                key = CryptoTestHelp.key1
+            }
+        }
+        val encrypted = cipher.processOne(true, UByteBuffer(CryptoTestHelp.payload))
 
-        cipher.init(false, key)
-        val decrypted = UByteArray(CryptoTestHelp.payload.size)
-        val length2 = cipher.processBytes(
-            encrypted,
-            0, encrypted.size,
-            decrypted, 0
-        )
-        assertEquals(CryptoTestHelp.payload.size, length)
-        assertEquals(CryptoTestHelp.payload.size, length2)
-        assertContentEquals(CryptoTestHelp.payload, decrypted)
+        val decryptedBytes = cipher.processOne(false, encrypted).getBytes()
+        val encryptedBytes = encrypted.flip().getBytes()
+
+        assertEquals(CryptoTestHelp.payload.size, encryptedBytes.size)
+        assertEquals(CryptoTestHelp.payload.size, decryptedBytes.size)
+        assertContentEquals(CryptoTestHelp.payload, decryptedBytes)
 
         val javaCipher = org.bouncycastle.crypto.engines.RC4Engine()
         javaCipher.init(
@@ -46,44 +40,33 @@ class RC4Tests {
             javaEncrypted, 0
         )
         assertEquals(javaEncrypted.size, bytes)
-        assertContentEquals(javaEncrypted, encrypted.toByteArray())
-    }
-
-    @Test
-    fun rc4SmallBlockTest() {
-        val cipher = BlockCipherAdapter(RC4Engine())
-        val key = KeyParameter(CryptoTestHelp.key1)
-        cipher.init(true, key)
-        val encrypted = CryptoTestHelp.process(cipher, UByteBuffer(CryptoTestHelp.payload))
-
-        cipher.init(false, key)
-        val decryptedBlocks = CryptoTestHelp.process(cipher, encrypted)
-        val decrypted = decryptedBlocks.slice(CryptoTestHelp.payload.size)
-        assertContentEquals(CryptoTestHelp.payload, decrypted.contentBytes)
+        assertContentEquals(javaEncrypted, encryptedBytes.toByteArray())
     }
 
     @Test
     fun rc2SmallNoBlockTest() {
-        val cipher = RC2Engine()
-        val key = CryptoTestHelp.key1
-        cipher.setKey(true, key)
-        val encrypted = CryptoTestHelp.process(cipher, UByteBuffer(CryptoTestHelp.payload))
+        val cipher = Cipher.build {
+            padding = Paddings.PKCS7
+            engine { rc2() }
+            key {
+                key = CryptoTestHelp.key1
+            }
+        }
+        val encrypted = cipher.processOne(true, UByteBuffer(CryptoTestHelp.payload))
+        val decrypted = cipher.processOne(false, encrypted)
 
-        cipher.setKey(false, key)
-        val decryptedBlocks = CryptoTestHelp.process(cipher, encrypted)
-        val decrypted = decryptedBlocks.slice(CryptoTestHelp.payload.size)
-        assertContentEquals(CryptoTestHelp.payload, decrypted.contentBytes)
+        assertContentEquals(CryptoTestHelp.payload, decrypted.getBytes())
 
-        val javaCipher = org.bouncycastle.crypto.engines.RC2Engine()
-        javaCipher.init(true, org.bouncycastle.crypto.params.KeyParameter(key.toByteArray()))
+        val javaCipher = org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher(org.bouncycastle.crypto.engines.RC2Engine())
+        javaCipher.init(true, org.bouncycastle.crypto.params.KeyParameter(CryptoTestHelp.key1.toByteArray()))
         val javaEncrypted =
             CryptoTestHelp.bouncyProcess(
                 javaCipher,
                 ByteBuffer(CryptoTestHelp.payload.toByteArray())
             )
 
-        encrypted.rewind()
+        encrypted.flip()
         assertEquals(javaEncrypted.remaining, encrypted.remaining)
-        assertContentEquals(javaEncrypted.contentBytes, encrypted.contentBytes.toByteArray())
+        assertContentEquals(javaEncrypted.getBytes(), encrypted.getBytes().toByteArray())
     }
 }

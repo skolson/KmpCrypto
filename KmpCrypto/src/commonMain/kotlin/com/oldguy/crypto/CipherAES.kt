@@ -176,7 +176,7 @@ class AESEngine : BlockCipher {
                 var u: Int
                 var rcon = 1
                 var i = 2
-                while (i < 14) {
+                while (true) {
                     u = subWord(shift(t7, 8)) xor rcon
                     rcon = rcon shl 1
                     t0 = t0 xor u
@@ -187,26 +187,21 @@ class AESEngine : BlockCipher {
                     w[i][2] = t2
                     t3 = t3 xor t2
                     w[i][3] = t3
+
+                    ++i
+                    if (i >= 15) break
+
                     u = subWord(t3)
                     t4 = t4 xor u
-                    w[i + 1][0] = t4
+                    w[i][0] = t4
                     t5 = t5 xor t4
-                    w[i + 1][1] = t5
+                    w[i][1] = t5
                     t6 = t6 xor t5
-                    w[i + 1][2] = t6
+                    w[i][2] = t6
                     t7 = t7 xor t6
-                    w[i + 1][3] = t7
-                    i += 2
+                    w[i][3] = t7
+                    ++i
                 }
-                u = subWord(shift(t7, 8)) xor rcon
-                t0 = t0 xor u
-                w[14][0] = t0
-                t1 = t1 xor t0
-                w[14][1] = t1
-                t2 = t2 xor t1
-                w[14][2] = t2
-                t3 = t3 xor t2
-                w[14][3] = t3
             }
             else -> {
                 throw IllegalStateException("Should never get here")
@@ -223,15 +218,6 @@ class AESEngine : BlockCipher {
     }
 
     /**
-     * Use this to change a key, will create the correct CipherParameters for this engine
-     * @param forEncryption true for encryption, false for decryption
-     * @param key bytes used as key
-     */
-    fun setKey(forEncryption: Boolean, key: UByteArray) {
-        init(forEncryption, KeyParameter(key))
-    }
-
-    /**
      * initialise an AES cipher.
      *
      * @param forEncryption whether or not we are for encryption.
@@ -243,17 +229,27 @@ class AESEngine : BlockCipher {
         forEncryption: Boolean,
         params: CipherParameters
     ) {
-        if (params is KeyParameter) {
-            workingKey = generateWorkingKey(params.key, forEncryption)
-            this.forEncryption = forEncryption
-            s = if (forEncryption) {
-                S.copyOf()
-            } else {
-                Si.copyOf()
+        when (params) {
+            is KeyParameter -> setKey(forEncryption, params)
+            is ParametersWithIV -> {
+                if (params.parameters is KeyParameter)
+                    setKey(forEncryption, params.parameters)
+                else
+                    throw IllegalArgumentException("ParametersWithIV parameters must be KeyParameter instance - ${params.parameters}")
             }
-            return
+            else ->
+                throw IllegalArgumentException("invalid parameter passed to AES init - $params")
         }
-        throw IllegalArgumentException("invalid parameter passed to AES init - $params")
+    }
+
+    private fun setKey(encrypt: Boolean, keyParm: KeyParameter) {
+        this.forEncryption = encrypt
+        workingKey = generateWorkingKey(keyParm.key, encrypt)
+        s = if (forEncryption) {
+            S.copyOf()
+        } else {
+            Si.copyOf()
+        }
     }
 
     override fun processBlock(

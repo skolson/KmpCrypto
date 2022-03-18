@@ -509,7 +509,7 @@ class CCMBlockCipher(
         }
         val iv = UByteArray(blockSize)
         iv[0] = (q - 1 and 0x7).toUByte()
-        nonce.copyInto(iv, 0, 1, 1 + nonce.size)
+        nonce.copyInto(iv, 1, 0, nonce.size)
         val ctrCipher: BlockCipher = SICBlockCipher(cipher)
         ctrCipher.init(forEncryption, ParametersWithIV(keyParam!!, iv))
         val outputLen: Int
@@ -532,7 +532,7 @@ class CCMBlockCipher(
             val block = UByteArray(blockSize)
             bytes.copyInto(block, 0, inIndex, inLen + inOff)
             ctrCipher.processBlock(block, 0, block, 0)
-            block.copyInto(output, outIndex, 0, outIndex + inLen + inOff - inIndex)
+            block.copyInto(output, outIndex, 0, inLen + inOff - inIndex)
             encMac.copyInto(output, outOff + inLen, 0, macSize)
         } else {
             if (inLen < macSize) {

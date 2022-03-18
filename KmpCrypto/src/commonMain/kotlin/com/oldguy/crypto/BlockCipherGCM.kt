@@ -703,7 +703,7 @@ class GCMBlockCipher(c: BlockCipher, m: GCMMultiplier = Tables4kGCMMultiplier())
     override val cipher = c
     override val algorithmName = "${cipher.algorithmName}/GCM"
     override val blockSize = c.blockSize
-    override val ivSize = 12
+    override val ivSize = blockSize
 
     private val multiplier = m
     private lateinit var exp: GCMExponentiator

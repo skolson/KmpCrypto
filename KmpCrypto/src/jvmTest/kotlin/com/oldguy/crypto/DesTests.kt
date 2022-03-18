@@ -10,79 +10,87 @@ import kotlin.test.assertEquals
 class DESSmallNoBlockTest {
     @Test
     fun desSmallBlock() {
-        val cipher = DESEngine()
-        val digest = MD5Digest()
-        val key = KeyParameter(digest.hash(CryptoTestHelp.key1, resultLen = 8))
-        cipher.init(true, key)
-        val encrypted = CryptoTestHelp.process(cipher, UByteBuffer(CryptoTestHelp.payload))
+        val desKey = byteArrayOf(18, -49, 48, -119, -112, -21, 99, -90).toUByteArray()
 
-        cipher.init(false, key)
-        val decryptedBlocks = CryptoTestHelp.process(cipher, encrypted)
-        val decrypted = decryptedBlocks.slice(CryptoTestHelp.payload.size)
-        assertContentEquals(CryptoTestHelp.payload, decrypted.contentBytes)
-
-        val javaCipher = org.bouncycastle.crypto.engines.DESEngine()
-        javaCipher.init(true, org.bouncycastle.crypto.params.KeyParameter(key.key.toByteArray()))
+        val javaCipher = org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher(org.bouncycastle.crypto.engines.DESEngine())
+        val hashKey = org.bouncycastle.crypto.params.KeyParameter(desKey.toByteArray())
+        javaCipher.init(true, hashKey)
         val javaEncrypted =
             CryptoTestHelp.bouncyProcess(
                 javaCipher,
                 ByteBuffer(CryptoTestHelp.payload.toByteArray())
             )
 
-        encrypted.rewind()
-        assertEquals(javaEncrypted.remaining,encrypted.remaining)
-        assertContentEquals(javaEncrypted.contentBytes, encrypted.contentBytes.toByteArray())
+        val cipher = Cipher.build {
+            padding = Paddings.PKCS7
+            engine { des() }
+            key {
+                key = desKey
+            }
+        }
+        val encrypted = cipher.processOne(true, UByteBuffer(CryptoTestHelp.payload))
+        val decrypted = cipher.processOne(false, encrypted)
+        assertContentEquals(CryptoTestHelp.payload, decrypted.getBytes())
+        encrypted.flip()
+        assertEquals(javaEncrypted.remaining, encrypted.remaining)
+        assertContentEquals(javaEncrypted.getBytes(), encrypted.getBytes().toByteArray())
     }
 
     @Test
     fun des3SmallNoBlockTest() {
-        val cipher = DESedeEngine()
-        val digest = MD5Digest()
-        val key = KeyParameter(digest.hash(CryptoTestHelp.key1, resultLen = 16))
-        cipher.init(true, key)
-        val encrypted = CryptoTestHelp.process(cipher, UByteBuffer(CryptoTestHelp.payload))
+        val desKey = UByteArray(16)
+        SecureRandom().nextBytes(desKey)
+        val cipher = Cipher.build {
+            padding = Paddings.PKCS7
+            engine { _3des() }
+            key {
+                key = desKey
+            }
+        }
+        val encrypted = cipher.processOne(true, UByteBuffer(CryptoTestHelp.payload))
+        val decrypted = cipher.processOne(false, encrypted)
+        assertContentEquals(CryptoTestHelp.payload, decrypted.getBytes())
 
-        cipher.init(false, key)
-        val decryptedBlocks = CryptoTestHelp.process(cipher, encrypted)
-        val decrypted = decryptedBlocks.slice(CryptoTestHelp.payload.size)
-        assertContentEquals(CryptoTestHelp.payload, decrypted.contentBytes)
-
-        val javaCipher = org.bouncycastle.crypto.engines.DESedeEngine()
-        javaCipher.init(true, org.bouncycastle.crypto.params.KeyParameter(key.key.toByteArray()))
+        val javaCipher = org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher(org.bouncycastle.crypto.engines.DESedeEngine())
+        val hashKey = org.bouncycastle.crypto.params.KeyParameter(desKey.toByteArray())
+        javaCipher.init(true, hashKey)
         val javaEncrypted =
             CryptoTestHelp.bouncyProcess(
                 javaCipher,
                 ByteBuffer(CryptoTestHelp.payload.toByteArray())
             )
 
-        encrypted.rewind()
+        encrypted.flip()
         assertEquals(javaEncrypted.remaining, encrypted.remaining)
-        assertContentEquals(javaEncrypted.contentBytes, encrypted.contentBytes.toByteArray())
+        assertContentEquals(javaEncrypted.getBytes(), encrypted.getBytes().toByteArray())
     }
 
     @Test
     fun des3_112_SmallNoBlockTest() {
-        val cipher = DESedeEngine()
-        val digest = MD5Digest()
-        val key = KeyParameter(digest.hash(CryptoTestHelp.key1, resultLen = 24))
-        cipher.init(true, key)
-        val encrypted = CryptoTestHelp.process(cipher, UByteBuffer(CryptoTestHelp.payload))
+        val desKey = UByteArray(24)
+        SecureRandom().nextBytes(desKey)
+        val cipher = Cipher.build {
+            padding = Paddings.PKCS7
+            engine { _3des112() }
+            key {
+                key = desKey
+            }
+        }
+        val encrypted = cipher.processOne(true, UByteBuffer(CryptoTestHelp.payload))
+        val decrypted = cipher.processOne(false, encrypted)
+        assertContentEquals(CryptoTestHelp.payload, decrypted.getBytes())
 
-        cipher.init(false, key)
-        val decryptedBlocks = CryptoTestHelp.process(cipher, encrypted)
-        val decrypted = decryptedBlocks.slice(CryptoTestHelp.payload.size)
-        assertContentEquals(CryptoTestHelp.payload, decrypted.contentBytes)
-
-        val javaCipher = org.bouncycastle.crypto.engines.DESedeEngine()
-        javaCipher.init(true, org.bouncycastle.crypto.params.KeyParameter(key.key.toByteArray()))
+        val javaCipher = org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher(org.bouncycastle.crypto.engines.DESedeEngine())
+        val hashKey = org.bouncycastle.crypto.params.KeyParameter(desKey.toByteArray())
+        javaCipher.init(true, hashKey)
         val javaEncrypted =
             CryptoTestHelp.bouncyProcess(
                 javaCipher,
                 ByteBuffer(CryptoTestHelp.payload.toByteArray())
             )
 
-        encrypted.rewind()
+        encrypted.flip()
         assertEquals(javaEncrypted.remaining, encrypted.remaining)
-        assertContentEquals(javaEncrypted.contentBytes, encrypted.contentBytes.toByteArray())
+        assertContentEquals(javaEncrypted.getBytes(), encrypted.getBytes().toByteArray())
     }
 }

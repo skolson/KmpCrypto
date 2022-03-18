@@ -1,7 +1,6 @@
 package com.oldguy.crypto
 
 import com.oldguy.common.io.*
-import com.oldguy.common.toHex
 
 /**
  * These are the supported chaining modes that can be applied to any of the selected engines
@@ -22,11 +21,10 @@ enum class Digests {
     RIPEMD128, RIPEMD160, Whirlpool
 }
 
-
 /**
  * See [build] companion function to configure and build a cipher for use in
  * encryption/descryption operations.
-
+ *
  * A DSL-like syntax offers flexibility for setting up a cipher and its key.
  * CipherV2.build {
  *     engine { aes() }
@@ -35,23 +33,43 @@ enum class Digests {
  *     key {
  *         stringKeyCharset = Charset(Charsets.Utf16le)
  *         stringKey = "SomeKey"
- *         hashKeyLengthBits = 256
  *         keyDigest = Digests.SHA256
  *     }
  * }
  * configures a cipher with AES, CBC chaining, and PKCS7 padding. It also sets the key to a string
  * value encoded with UTF-16 Little Endian encoding.
+ *
+ * Note that if a Cipher instance is created without using the DSL syntax, then it is created with
+ * an empty key configuration that is typically not useful until it is set. Be sure to invoke the
+ * [key] function to set the desired key-related parameters BEFORE using any of the [process] or
+ * [processOne] methods.
  */
 class Cipher {
-    lateinit var keyConfiguration: KeyConfiguration
-    lateinit var parameters: CipherParameters
 
-    lateinit var engine: BlockCipher
+    /**
+     * Typically use the DSL to choose an engine. Default is AES
+     */
+    var engine: BlockCipher = AESEngine()
 
+    var keyConfiguration = KeyConfiguration()
+
+    /**
+     * Contains all the parameters related to building the key used for encryption/decryption. Must
+     * be set using the [key] function.  Default is a zero byte key with no IV, no other additional
+     * info (mac size, nonce, additional data, etc all zero or empty)
+     */
+    var parameters = keyConfiguration.build(engine)
+        private set
+
+    /**
+     * Size in bytes of buffers used in the [process] function. Controls the maximum number of bytes
+     * processed in any one operation.  If this needs to be changed, keep it a multiple of 512.
+     */
     var bufferSize = 4096u
 
     /**
      * Any of the algorithm modes in [CipherModes] can be used with any engine. Default is none.
+     * If changing this, change it BEFORE calling the [engine] function
      */
     var mode = CipherModes.None
 
@@ -63,19 +81,29 @@ class Cipher {
 
     /**
      * Any of the valid padding modes can be applied to any engine and chaining.  Default is none.
+     * If changing this, change it BEFORE calling the [engine] function
      */
     var padding = Paddings.None
 
     var debug = false
 
     /**
-     * Convenience property for changing key before invoking [process] or [processOne]. Gets or
-     * sets [keyConfiguration] key property
+     * Property for changing key before invoking [process] or [processOne], but
+     * retaining all other previously set [KeyConfiguration] parameters. Use the [key] function
+     * to configure a full key configuration using more than just the key bytes.
+     *
+     * Note each set() invocation creates a new [parameters] instance with the updated key bytes.
+     * If an empty key array is used with set, an exception is thrown.
      */
     var key: UByteArray
         get() = keyConfiguration.key
         set(value) {
-            keyConfiguration.key = value
+            if (value.isEmpty())
+                throw IllegalArgumentException("Zero byte keys are invalid")
+            keyConfiguration.apply {
+                key = value
+                parameters = build(engine)
+            }
         }
 
     private var processedCount = 0UL
@@ -167,7 +195,7 @@ class Cipher {
         }
 
         fun rc4(): BlockCipher {
-            return BlockCipherAdapter(RC4Engine())
+            return BufferedBlockCipher(BlockCipherAdapter(RC4Engine()), true)
         }
 
         fun des(): BlockCipher {
@@ -183,19 +211,34 @@ class Cipher {
         }
     }
 
+    /**
+     * Sets the configured engine from the results of the lambda. Then uses the mode and padding
+     * values to configure the engine in this Cipher instance
+     * @param arg lambda that invokes one of the [Engine] functions to set an engine
+     */
     inline fun engine(arg: Engine.() -> BlockCipher) {
         engine = Engine().arg()
         build()
     }
 
-    inline fun key(arg: KeyConfiguration.() -> Unit) {
-        keyConfiguration = KeyConfiguration(engine.ivSize)
-            .apply { arg() }
+    /**
+     * DSL syntax to set the key configuration parameters. This function must be used to set any
+     * non-trivial key configuration. If left to the default, only the [key] UByteArray parameter
+     * will be used, and the UByteArray must be manually set to something not empty before invoking
+     * [process] or [processOne].
+     */
+    fun key(arg: KeyConfiguration.() -> Unit) {
+        keyConfiguration = KeyConfiguration()
             .apply {
-                parameters = build()
+                ivSize = engine.blockSize.toUInt()
+                arg()
+                parameters = build(engine)
             }
     }
 
+    /**
+     * Builds a Cipher instance
+     */
     fun build(): Cipher {
         engine.apply {
             val eng = when (mode) {
@@ -253,10 +296,24 @@ class Cipher {
     private fun finishProcess():UByteArray {
         val eng = engine
         eng.apply {
-            val finalBytes = UByteArray(blockSize * 2)
+            val rem = 0
+            var finalBytes = UByteArray(blockSize * 2)
             val last = when (this) {
-                is AEADBlockCipher -> doFinal(finalBytes, 0)
-                is BufferedBlockCipher -> doFinal(finalBytes, 0)
+                is AEADBlockCipher -> {
+                    val sz = getOutputSize(rem)
+                    if (sz > finalBytes.size) finalBytes = UByteArray(sz)
+                    doFinal(finalBytes, 0)
+                }
+                is PaddedBufferedBlockCipher -> {
+                    val sz = getOutputSize(rem)
+                    if (sz > finalBytes.size) finalBytes = UByteArray(sz)
+                    doFinal(finalBytes, 0)
+                }
+                is BufferedBlockCipher -> {
+                    val sz = getOutputSize(rem)
+                    if (sz > finalBytes.size) finalBytes = UByteArray(sz)
+                    doFinal(finalBytes, 0)
+                }
                 else -> 0
             }
             processedCount += last.toUInt()
@@ -273,6 +330,11 @@ class Cipher {
             val b = inBuffer.getBytes().toUByteArray()
             processedCount += when (this) {
                 is AEADBlockCipher -> {
+                    val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
+                    outBlock.positionLimit(0, r)
+                    r
+                }
+                is PaddedBufferedBlockCipher -> {
                     val r = processBytes(b, 0, b.size, outBlock.contentBytes, 0)
                     outBlock.positionLimit(0, r)
                     r
@@ -311,10 +373,12 @@ class Cipher {
         val eng = engine
         eng.apply {
             init(encrypt, parameters)
-            outBlock = UByteBuffer(bufferSize.toInt() * 2)
+            outBlock = UByteBuffer(inBuffer.capacity + (blockSize * 2))
             return processOneBuffer(inBuffer).apply {
+                position = limit
+                limit = capacity
                 putBytes(finishProcess())
-            }
+            }.flip()
         }
     }
 
@@ -440,13 +504,18 @@ class Cipher {
      *
      *  See the builders various properties and functions for details on how keys can be configured.
      */
-    class KeyConfiguration(val ivSize: Int) {
+    class KeyConfiguration() {
         /**
          * An array of bytes which is the key used. Note that if a Digest is also configured and
          * a hashKeyLength is set, this value will be changed to the hash value at build time. See
          * vars [stringKey] and [stringKeyCharset] for setting [key] from a String.
          */
         var key = UByteArray(0)
+
+        /**
+         * Engine sets this to its block size, which is required IV size if [ivSizeMatchBlock] is true
+         */
+        var ivSize = 0u
 
         /**
          * When using [stringKey], use this charset to encode the string into bytes for the true key.
@@ -481,7 +550,7 @@ class Cipher {
             set(value) {
                 if (value.size > ivSizeLimit)
                     throw IllegalArgumentException("IV must not be larger than $ivSizeLimit. Typical value for this engine is ${ivSize}. Size rejected: ${value.size}")
-                if (ivSizeMatchBlock && value.isNotEmpty() && value.size != ivSize)
+                if (ivSizeMatchBlock && value.isNotEmpty() && value.size != ivSize.toInt())
                     throw IllegalArgumentException("If specified, IV size: ${value.size} must be same as block size: $ivSize")
                 field = value
             }
@@ -495,12 +564,13 @@ class Cipher {
         var keyDigest: Digests = Digests.None
 
         /**
-         * Use in conjunction with the keyDigest configured. Specified in Bytes
+         * Use in conjunction with the keyDigest configured. Specified in Bytes. Normally let this be
+         * set by the build function after choosing a keyDigest value.
          */
         var hashKeyLength = 0
             set(value) {
                 field = value
-                if (value <= 16 || value > 512) throw IllegalArgumentException("Key length in bytes must be between 16 and 512")
+                if (value < 16 || value > 512) throw IllegalArgumentException("Key length in bytes ($value) must be between 16 and 512")
             }
 
         var hashKeyLengthBits = hashKeyLength * 8
@@ -541,26 +611,30 @@ class Cipher {
             this.associatedText = associatedText
         }
 
-        fun build(): CipherParameters {
+        fun build(engine: BlockCipher): CipherParameters {
             var tempKey = key
             val tempDigest = keyDigest
-            if (hashKeyLength > 0) {
-                if (tempDigest != Digests.None) {
-                    val digestImpl = when (tempDigest) {
-                        Digests.SHA1 -> SHA1Digest()
-                        Digests.SHA256 -> SHA256Digest()
-                        Digests.SHA384 -> SHA384Digest()
-                        Digests.SHA512 -> SHA512Digest()
-                        Digests.MD5 -> MD5Digest()
-                        Digests.MD4 -> MD4Digest()
-                        Digests.MD2 -> MD2Digest()
-                        Digests.RIPEMD128 -> RIPEMD128Digest()
-                        Digests.RIPEMD160 -> RIPEMD160Digest()
-                        Digests.Whirlpool -> WhirlpoolDigest()
-                        else -> throw IllegalStateException("should never happen :-)")
-                    }
-                    tempKey = digestImpl.hash(key, resultLen = hashKeyLength)
+            if (tempDigest != Digests.None) {
+                val digestImpl = when (tempDigest) {
+                    Digests.SHA1 -> SHA1Digest()
+                    Digests.SHA256 -> SHA256Digest()
+                    Digests.SHA384 -> SHA384Digest()
+                    Digests.SHA512 -> SHA512Digest()
+                    Digests.MD5 -> MD5Digest()
+                    Digests.MD4 -> MD4Digest()
+                    Digests.MD2 -> MD2Digest()
+                    Digests.RIPEMD128 -> RIPEMD128Digest()
+                    Digests.RIPEMD160 -> RIPEMD160Digest()
+                    Digests.Whirlpool -> WhirlpoolDigest()
+                    else -> throw IllegalStateException("should never happen :-)")
                 }
+                if (hashKeyLength == 0) {
+                    hashKeyLength = if (tempDigest == Digests.MD5 && engine is DESedeEngine)
+                        engine.keySize
+                    else
+                        digestImpl.digestSize
+                }
+                tempKey = digestImpl.hash(key, resultLen = hashKeyLength)
             }
             val keyParm = KeyParameter(tempKey)
             val parm = if (macSize > 0)

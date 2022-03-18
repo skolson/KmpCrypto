@@ -39,7 +39,6 @@ class FileTests {
                 key {
                     stringKey = password
                     keyDigest = Digests.SHA256
-                    hashKeyLengthBits = 256
                     macSize = 128
                     iv = randomIV()
                 }

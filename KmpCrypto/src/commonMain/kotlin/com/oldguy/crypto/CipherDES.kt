@@ -62,7 +62,7 @@ open class DESEngine : BlockCipher {
 
     /**
      * generate an integer based working key based on our secret key
-     * and what we processing we are planning to do.
+     * and what processing we are planning to do.
      *
      * Acknowledgements for this routine go to James Gillogly &amp; Phil Karn.
      * (whoever, and wherever they are!).
@@ -76,7 +76,7 @@ open class DESEngine : BlockCipher {
         val pcr = BooleanArray(56)
         for (j in 0..55) {
             val l = pc1[j].toInt()
-            pc1m[j] = key[l ushr 3].toInt() and bytebit[l and 7].toInt() != 0
+            pc1m[j] = key[l ushr 3].toInt() and byteBit[l and 7].toInt() != 0
         }
         for (i in 0..15) {
             val m = if (encrypting) {
@@ -106,10 +106,10 @@ open class DESEngine : BlockCipher {
             }
             for (j in 0..23) {
                 if (pcr[pc2[j].toInt()]) {
-                    newKey[m] = newKey[m] or bigbyte[j]
+                    newKey[m] = newKey[m] or bigByte[j]
                 }
                 if (pcr[pc2[j + 24].toInt()]) {
-                    newKey[n] = newKey[n] or bigbyte[j]
+                    newKey[n] = newKey[n] or bigByte[j]
                 }
             }
         }
@@ -134,9 +134,6 @@ open class DESEngine : BlockCipher {
         return newKey
     }
 
-    /**
-     * the DES engine.
-     */
     fun desFunc(
         wKey: IntArray,
         inBytes: UByteArray,
@@ -224,10 +221,10 @@ open class DESEngine : BlockCipher {
         //            0xfe,0xdc,0xba,0x98,0x76,0x54,0x32,0x10,
         //            0x89,0xab,0xcd,0xef,0x01,0x23,0x45,0x67
         //        };
-        private val bytebit = shortArrayOf(
+        private val byteBit = shortArrayOf(
             128, 64, 32, 16, 8, 4, 2, 1
         )
-        private val bigbyte = intArrayOf(
+        private val bigByte = intArrayOf(
             0x800000, 0x400000, 0x200000, 0x100000,
             0x80000, 0x40000, 0x20000, 0x10000,
             0x8000, 0x4000, 0x2000, 0x1000,
@@ -413,6 +410,8 @@ class DESedeEngine(val largeKey: Boolean = false) : DESEngine() {
     override val algorithmName = "DESede"
     override val blockSize = 8
     override val ivSize = 8
+    val keySize get() = if (largeKey) 24 else 16
+
     /**
      * initialise a DESede cipher.
      *

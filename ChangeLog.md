@@ -4,6 +4,10 @@
 
 - Cipher fun processOne added - convenience function for single-payload operations, no coroutine required.
 - Cipher add key property as a convenience accessor for keyConfiguration.key
+- Default Cipher key configuration to no key bytes and all other fields zero or empty. This default configuration is only useful when only the key bytes are used as a key. Use the [key] DSL function to create any more complex config.
+- Deleted Provider interface and two implementation classes (noop and RC4)
+- Default crypto engine for Cipher is AESEngine
+- hashKeyLength now set when choosing Digest
 
 ### 0.1.1
 

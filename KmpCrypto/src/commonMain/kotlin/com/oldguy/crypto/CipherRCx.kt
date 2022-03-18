@@ -69,13 +69,8 @@ class RC4Engine : StreamCipher {
         params: CipherParameters
     ) {
         if (params is KeyParameter) {
-            /*
-             * RC4 encryption and decryption is completely
-             * symmetrical, so the 'forEncryption' is
-             * irrelevant.
-             */
             workingKey = params.key
-            resetKey(workingKey)
+            reset()
             return
         }
         throw IllegalArgumentException("invalid parameter passed to RC4 init - ")
@@ -131,7 +126,12 @@ class RC4Engine : StreamCipher {
     }
 
     override fun reset() {
-        resetKey(workingKey)
+        if (workingKey.isEmpty()) {
+            for (i in 0 until stateLength) {
+                engineState[i] = i.toUByte()
+            }
+        } else
+            resetKey(workingKey)
     }
 
     // Private implementation

@@ -11,19 +11,26 @@ class AesSmallNoBlockTest{
 
     @Test
     fun aesSmallBlock() {
-        val cipher = AESEngine()
-        val digest = SHA256Digest()
-        val key = digest.hash(CryptoTestHelp.key1, UByteArray(0))
-        cipher.setKey(true, key)
-        val encrypted = CryptoTestHelp.process(cipher, UByteBuffer(CryptoTestHelp.payload))
+        val cipher = Cipher.build {
+            padding = Paddings.PKCS7
+            engine { aes() }
+            key {
+                keyDigest = Digests.SHA256
+                key = CryptoTestHelp.key1
+            }
+        }
+        val encrypted = cipher.processOne(true, UByteBuffer(CryptoTestHelp.payload))
+        val decrypted = cipher.processOne(false, encrypted)
+        assertContentEquals(CryptoTestHelp.payload, decrypted.getBytes())
 
-        cipher.setKey(false, key)
-        val decryptedBlocks = CryptoTestHelp.process(cipher, encrypted)
-        val decrypted = decryptedBlocks.slice(CryptoTestHelp.payload.size)
-        assertContentEquals(CryptoTestHelp.payload, decrypted.contentBytes)
-
-        val javaCipher = org.bouncycastle.crypto.engines.AESEngine()
-        javaCipher.init(true, org.bouncycastle.crypto.params.KeyParameter(key.toByteArray()))
+        val javaCipher = org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher(org.bouncycastle.crypto.engines.AESEngine())
+        val hashKeyBytes = ByteArray(32)
+        org.bouncycastle.crypto.digests.SHA256Digest().apply {
+            update(CryptoTestHelp.key1.toByteArray(), 0, CryptoTestHelp.key1.size)
+            doFinal(hashKeyBytes, 0)
+        }
+        val hashKey = org.bouncycastle.crypto.params.KeyParameter(hashKeyBytes)
+        javaCipher.init(true, hashKey)
         val javaEncrypted =
             CryptoTestHelp.bouncyProcess(
                 javaCipher,
@@ -32,6 +39,6 @@ class AesSmallNoBlockTest{
 
         encrypted.rewind()
         assertEquals(javaEncrypted.remaining, encrypted.remaining)
-        assertContentEquals(javaEncrypted.contentBytes, encrypted.contentBytes.toByteArray())
+        assertContentEquals(javaEncrypted.getBytes(), encrypted.getBytes().toByteArray())
     }
 }
