@@ -39,7 +39,8 @@ class FileTests {
                 key {
                     stringKey = password
                     keyDigest = Digests.SHA256
-                    authenticatedEncryptionAssociatedData(16, randomIV(8))
+                    ivSizeMatchBlock = false
+                    iv = randomIV(12)
                 }
             }
             val ivContent = cipher.keyConfiguration.iv
