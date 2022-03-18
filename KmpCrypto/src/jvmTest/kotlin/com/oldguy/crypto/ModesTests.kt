@@ -13,14 +13,15 @@ import kotlin.test.assertContentEquals
 class AesTests {
     val iv8 = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
     val iv16 = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
+    val payload = "any stuff in here 12345678"
+    val keyBytes = byteArrayOf(0,1,2,3,4,5,6,7,8,9,0x7f,0x55)
+    val payloadBytes = Charset(Charsets.Utf8).encode(payload)
 
     @Test
     fun aesCbc() {
         runTest {
-            val payload = "any stuff in here 12345678"
-            val keyBytes = byteArrayOf(0,1,2,3,4,5,6,7,8,9,0x7f,0x55)
-            val payloadBytes = Charset(Charsets.Utf8).encode(payload)
             Cipher.build {
+                mode = CipherModes.CBC
                 padding = Paddings.PKCS7
                 engine { aes() }
                 key {
@@ -31,10 +32,9 @@ class AesTests {
                 val encrypted = processOne(true, UByteBuffer(payloadBytes.toUByteArray()))
 
                 val javaCipher = org.bouncycastle.crypto.paddings.PaddedBufferedBlockCipher(
-//                    org.bouncycastle.crypto.modes.CBCBlockCipher(
+                    org.bouncycastle.crypto.modes.CBCBlockCipher(
                     org.bouncycastle.crypto.engines.AESEngine()
-                    )
-//                ))
+                    ))
                 val hashKeyBytes = ByteArray(32)
                 org.bouncycastle.crypto.digests.SHA256Digest().apply {
                     update(keyBytes, 0, keyBytes.size)
@@ -62,7 +62,7 @@ class AesTests {
     fun aesCfbTest() {
         runTest {
             Cipher.build {
-                parse("aes/cfb")
+                parse("aes/cfb/pkcs7")
                 key {
                     stringKey = CryptoTestHelp.stringKey
                     keyDigest = Digests.SHA256
@@ -79,13 +79,14 @@ class AesTests {
             Cipher.build {
                 parse("aes/ccm")
                 key {
-                    key = CryptoTestHelp.key1
-                    ivSizeMatchBlock = false
-                    iv = iv8
+                    key = keyBytes.toUByteArray()
+                    authenticatedEncryptionAssociatedData(16, iv8)
                     keyDigest = Digests.SHA256
                 }
             }.apply {
-                CryptoTestHelp.singleBufferTest(this)
+                val encrypted = processOne(true, UByteBuffer(payloadBytes.toUByteArray()))
+                val decrypted = processOne(false, encrypted)
+                assertContentEquals(payloadBytes.toUByteArray(), decrypted.getBytes())
             }
         }
     }

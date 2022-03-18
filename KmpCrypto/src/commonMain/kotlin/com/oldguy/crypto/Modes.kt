@@ -332,7 +332,10 @@ class CFBBlockCipher(
  * NIST Special Publication 800-38C.
  *
  *
- * **Note**: this mode is a packet mode - it needs all the data up front.
+ * **Note**: this mode is a packet mode - it needs ALL the data up front. The maximum allowable
+ * input size can be set (for self-defense on large input) using the [bufferLimit] property. Default
+ * [bufferSize] is 4k, buffer will grow in [bufferSize] blocks until [bufferLimit] is exceeded, at
+ * which time an exception is thrown. [bufferLimit] defaults to 100 * [bufferSize]
  */
 class CCMBlockCipher(
     override val cipher: BlockCipher
@@ -356,6 +359,8 @@ class CCMBlockCipher(
     private val associatedTextLength get() = associatedText.position + initialAssociatedText.size
     private val hasAssociatedText: Boolean get() = associatedTextLength > 0
 
+    var bufferSize = 4096
+    var bufferLimit = bufferSize * 100
     private var associatedText = UByteBuffer(4096)
     private var data = UByteBuffer(4096)
 
@@ -423,12 +428,15 @@ class CCMBlockCipher(
         if (bytes.size < inOffset + length) {
             throw IllegalArgumentException("Input buffer too short")
         }
+        if (data.remaining < length)
+            data.expand(bufferSize.toUInt())
         data.putBytes(bytes, inOffset, length)
         return 0
     }
 
     override fun doFinal(out: UByteArray, outOffset: Int): Int {
-        val buf = data.contentBytes.copyOfRange(0, data.position)
+        data.flip()
+        val buf = data.getBytes()
         val len = processPacket(buf, 0, buf.size, out, outOffset)
         reset()
         return len
@@ -437,7 +445,7 @@ class CCMBlockCipher(
     override fun reset() {
         cipher.reset()
         associatedText.rewind()
-        data.rewind()
+        data.clear()
     }
 
     override fun getUpdateOutputSize(length: Int): Int {
@@ -558,7 +566,7 @@ class CCMBlockCipher(
             block.copyInto(output, outIndex, 0, outputLen - (inIndex - inOff))
             val calculatedMacBlock = UByteArray(blockSize)
             calculateMac(output, outOff, outputLen, calculatedMacBlock)
-            if (macBlock contentEquals calculatedMacBlock) {
+            if (!macBlock.contentEquals(calculatedMacBlock)) {
                 throw IllegalStateException("mac check in CCM failed")
             }
         }

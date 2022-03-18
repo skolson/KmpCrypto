@@ -58,7 +58,7 @@ class Cipher {
      * be set using the [key] function.  Default is a zero byte key with no IV, no other additional
      * info (mac size, nonce, additional data, etc all zero or empty)
      */
-    var parameters = keyConfiguration.build(engine)
+    var parameters = keyConfiguration.build(this)
         private set
 
     /**
@@ -100,9 +100,10 @@ class Cipher {
         set(value) {
             if (value.isEmpty())
                 throw IllegalArgumentException("Zero byte keys are invalid")
+            val c = this
             keyConfiguration.apply {
                 key = value
-                parameters = build(engine)
+                parameters = build(c)
             }
         }
 
@@ -228,11 +229,12 @@ class Cipher {
      * [process] or [processOne].
      */
     fun key(arg: KeyConfiguration.() -> Unit) {
+        val c = this
         keyConfiguration = KeyConfiguration()
             .apply {
                 ivSize = engine.blockSize.toUInt()
                 arg()
-                parameters = build(engine)
+                parameters = build(c)
             }
     }
 
@@ -587,31 +589,55 @@ class Cipher {
          */
         var secureRandom: SecureRandom? = null
 
-        var macSize = 0
+        /**
+         * Used by AEAD schemes like CCM and GCM. macSize must be must be 4, 6, 8, 10, 12, 14, or 16 bytes.
+         * Use [authenticatedEncryptionAssociatedData] to set this value
+         */
+        private var macSizeBytes = 0
+            set(value) {
+                if (value < 4 || value > 16 || (value % 2) > 0)
+                    throw IllegalArgumentException("macSize in bytes must be between 4 and 16, divisible by 2")
+                field = value
+            }
+        /**
+         * Used by AEAD schemes like CCM and GCM. size must be beteen 7 and 13 bytes.
+         * Use [authenticatedEncryptionAssociatedData] to set this value
+         */
         private var nonce = UByteArray(0)
+            set(value) {
+                if (value.size < 7 || value.size > 13)
+                    throw IllegalArgumentException("nonce length must be between 7 and 13 bytes: ${value.size}")
+                field = value
+            }
+
+        /**
+         * Used by AEAD schemes like CCM and GCM.
+         * Use [authenticatedEncryptionAssociatedData] to set this value
+         */
         private var associatedText = UByteArray(0)
 
         /**
          * Set the required attributes for encryption using AEAD (Authenticated Encryption with
          * Associated Data). Currently only GCM and CCM chaining modes support use of this.
          *
-         * @param macSize must be between 32 and 128, in multiples of 8.
-         * @param nonce
+         * @param macSizeBytes must be 4, 6, 8, 10, 12, 14, or 16 bytes.
+         * @param nonce must be between 7 and 13 bytes
          * @param associatedText defaults to none.
          *
          * @see <a href="https://en.wikipedia.org/wiki/Authenticated_encryption#Authenticated_encryption_with_associated_data_(AEAD)">Wikipedia on Authenticated Encryption</a>
          */
         fun authenticatedEncryptionAssociatedData(
-            macSize: Int,
+            macSizeBytes: Int,
             nonce: UByteArray,
             associatedText: UByteArray = UByteArray(0)
         ) {
-            this.macSize = macSize
+            this.macSizeBytes = macSizeBytes
             this.nonce = nonce
             this.associatedText = associatedText
         }
 
-        fun build(engine: BlockCipher): CipherParameters {
+        fun build(cipher: Cipher): CipherParameters {
+            val engine = cipher.engine
             var tempKey = key
             val tempDigest = keyDigest
             if (tempDigest != Digests.None) {
@@ -637,9 +663,11 @@ class Cipher {
                 tempKey = digestImpl.hash(key, resultLen = hashKeyLength)
             }
             val keyParm = KeyParameter(tempKey)
-            val parm = if (macSize > 0)
-                AEADParameters(keyParm, macSize, iv, associatedText)
-            else
+            val parm = if (macSizeBytes > 0) {
+                if (cipher.mode != CipherModes.CCM && cipher.mode != CipherModes.GCM)
+                    throw IllegalArgumentException("AEAD parameters only usable with CCM or GCM modes")
+                AEADParameters(keyParm, macSizeBytes * 8, nonce, associatedText)
+            } else
                 secureRandom?.let { ParametersWithRandom(keyParm, it) }
                     ?: if (iv.isNotEmpty())
                         ParametersWithIV(keyParm, iv)
