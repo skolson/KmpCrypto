@@ -43,6 +43,11 @@ enum class Digests {
  * an empty key configuration that is typically not useful until it is set. Be sure to invoke the
  * [key] function to set the desired key-related parameters BEFORE using any of the [process] or
  * [processOne] methods.
+ *
+ * Cipher has a couple of accessor properties for re-use of a Cipher instance across multiple [process]
+ * calls that enable changing the key or the IV.  See the [key] and [iv] properties.  Changing
+ * amy other key information requires use of the key DSL function, which creates a new Key definition
+ * and underlying CipherParameters instance.
  */
 class Cipher {
 
@@ -107,24 +112,102 @@ class Cipher {
             }
         }
 
+    /**
+     * Property for changing the IV before invoking [process] or [processOne], but
+     * retaining all other previously set [KeyConfiguration] parameters. Use the [key] function
+     * to configure a full key configuration if any other [KeyConfiguration] values need
+     * changing. Only [key] and [iv] properties can be changed without using the [key] builder function.
+     *
+     * Note each set() invocation creates a new [parameters] instance with the updated IV bytes.
+     */
+    var iv: UByteArray
+        get() = keyConfiguration.iv
+        set(value) {
+            val c = this
+            keyConfiguration.apply {
+                iv = value
+                parameters = build(c)
+            }
+        }
+
     private var processedCount = 0UL
     private lateinit var outBlock: UByteBuffer
 
     /**
-     * Generate a Random IV of the specified size in bytes, using the specified SecureRandom class
-     * as a source.
-     * @param size length of initialization vector in bytes. Default is specified by the configured
-     * engine, so the default should typically be sufficient.
-     * @param randomSource Uses the [SecureRandom] source to create a cryptographic-quality random set of
-     * bytes. Default uses SecureRandomMechanism.Hash_DRBG and SecureRandomAlgorithm.SHA512
+     * These functions supply the available engine. Note that a BufferedBlockCipher is usable with partial
+     * blocks on PGP, CFB, OFB, OpenPGP, SIC, GCTR and so can be wrapped here when/if those are supported
      */
-    fun randomIV(
-        size: Int = engine.ivSize,
-        randomSource: SecureRandom = SecureRandom()
-    ): UByteArray {
-        return UByteArray(size).apply {
-            randomSource.nextBytes(this)
+    class Engine {
+        fun aes(): BlockCipher {
+            return AESEngine()
         }
+
+        fun rc2(): BlockCipher {
+            return RC2Engine()
+        }
+
+        fun rc4(): BlockCipher {
+            return BufferedBlockCipher(BlockCipherAdapter(RC4Engine()), true)
+        }
+
+        fun des(): BlockCipher {
+            return DESEngine()
+        }
+
+        fun _3des(): BlockCipher {
+            return DESedeEngine()
+        }
+
+        fun _3des112(): BlockCipher {
+            return DESedeEngine(true)
+        }
+    }
+
+    /**
+     * Sets the configured engine from the results of the lambda. Then uses the mode and padding
+     * values to configure the engine in this Cipher instance
+     * @param arg lambda that invokes one of the [Engine] functions to set an engine
+     */
+    inline fun engine(arg: Engine.() -> BlockCipher) {
+        engine = Engine().arg()
+        build()
+    }
+
+    /**
+     * Builds a Cipher instance
+     */
+    fun build(): Cipher {
+        engine.apply {
+            val eng = when (mode) {
+                CipherModes.None -> this
+                CipherModes.CBC -> CBCBlockCipher(this)
+                CipherModes.CFB -> CFBBlockCipher(this, cfbBitSize)
+                CipherModes.CCM -> CCMBlockCipher(this)
+                CipherModes.GCM -> GCMBlockCipher(this)
+                CipherModes.ECB -> ECBBlockCipher(this)
+            }
+            engine = when (padding) {
+                Paddings.None -> eng
+                Paddings.PKCS7 -> PaddedBufferedBlockCipher(eng)
+            }
+        }
+        return this
+    }
+
+    /**
+     * DSL syntax to set the key configuration parameters. This function must be used to set any
+     * non-trivial key configuration. If left to the default, only the [key] UByteArray parameter
+     * will be used, and the UByteArray must be manually set to something not empty before invoking
+     * [process] or [processOne].
+     */
+    fun key(arg: KeyConfiguration.() -> Unit) {
+        val c = this
+        keyConfiguration = KeyConfiguration()
+            .apply {
+                ivSize = engine.blockSize.toUInt()
+                arg()
+                parameters = build(c)
+            }
     }
 
     /**
@@ -183,83 +266,6 @@ class Cipher {
     }
 
     /**
-     * These functions supply the available engine. Note that a BufferedBlockCipher is usable with partial
-     * blocks on PGP, CFB, OFB, OpenPGP, SIC, GCTR and so can be wrapped here when/if those are supported
-     */
-    class Engine {
-        fun aes(): BlockCipher {
-            return AESEngine()
-        }
-
-        fun rc2(): BlockCipher {
-            return RC2Engine()
-        }
-
-        fun rc4(): BlockCipher {
-            return BufferedBlockCipher(BlockCipherAdapter(RC4Engine()), true)
-        }
-
-        fun des(): BlockCipher {
-            return DESEngine()
-        }
-
-        fun _3des(): BlockCipher {
-            return DESedeEngine()
-        }
-
-        fun _3des112(): BlockCipher {
-            return DESedeEngine(true)
-        }
-    }
-
-    /**
-     * Sets the configured engine from the results of the lambda. Then uses the mode and padding
-     * values to configure the engine in this Cipher instance
-     * @param arg lambda that invokes one of the [Engine] functions to set an engine
-     */
-    inline fun engine(arg: Engine.() -> BlockCipher) {
-        engine = Engine().arg()
-        build()
-    }
-
-    /**
-     * DSL syntax to set the key configuration parameters. This function must be used to set any
-     * non-trivial key configuration. If left to the default, only the [key] UByteArray parameter
-     * will be used, and the UByteArray must be manually set to something not empty before invoking
-     * [process] or [processOne].
-     */
-    fun key(arg: KeyConfiguration.() -> Unit) {
-        val c = this
-        keyConfiguration = KeyConfiguration()
-            .apply {
-                ivSize = engine.blockSize.toUInt()
-                arg()
-                parameters = build(c)
-            }
-    }
-
-    /**
-     * Builds a Cipher instance
-     */
-    fun build(): Cipher {
-        engine.apply {
-            val eng = when (mode) {
-                CipherModes.None -> this
-                CipherModes.CBC -> CBCBlockCipher(this)
-                CipherModes.CFB -> CFBBlockCipher(this, cfbBitSize)
-                CipherModes.CCM -> CCMBlockCipher(this)
-                CipherModes.GCM -> GCMBlockCipher(this)
-                CipherModes.ECB -> ECBBlockCipher(this)
-            }
-            engine = when (padding) {
-                Paddings.None -> eng
-                Paddings.PKCS7 -> PaddedBufferedBlockCipher(eng)
-            }
-        }
-        return this
-    }
-
-    /**
      * Initializes the configured Cipher, then repeatedly calls the input function to get input data.
      * Process ends when input is called with an empty (!hasRemaining) buffer.  Output is called
      * once for each processed block, with a buffer positioned at zero and remaining = bytes produced.
@@ -293,6 +299,138 @@ class Cipher {
             if (outBlock.hasRemaining) output(outBlock)
         }
         return processedCount
+    }
+
+    /**
+     * Decrypt one inBuffer that contains entire payload to be encrypted/decrypted. Does same as
+     * [process] function using one and only one input buffer. Also does not require coroutine.
+     * @param encrypt true if input data is being encrypted. False if input data is being decrypted.
+     * @param inBuffer remaining bytes in buffer are processed as entire payload.
+     * @return processed output
+     */
+    fun processOne(encrypt: Boolean, inBuffer: UByteBuffer): UByteBuffer {
+        val eng = engine
+        eng.apply {
+            init(encrypt, parameters)
+            outBlock = UByteBuffer(inBuffer.capacity + (blockSize * 2))
+            return processOneBuffer(inBuffer).apply {
+                position = limit
+                limit = capacity
+                putBytes(finishProcess())
+            }.flip()
+        }
+    }
+
+    /**
+     * Convenience method for encrypting/decrypting a source file to a destination file. For decryption,
+     * if the inFile has an initialization vector, it must be read before calling this function,
+     * so that the current position of the inFile is the start of encrypted data. For encryption, any
+     * initialization vector should already have been written before calling this.
+     * @param encrypt true for encryption, false for decryption
+     * @param inFile input data file, see note above for IV handling
+     * @param outFile output data file, see note above for IV handling
+     */
+    suspend fun process(
+        encrypt: Boolean,
+        inFile: RawFile,
+        outFile: RawFile
+    ): ULong {
+        inFile.blockSize = engine.blockSize.toUInt()
+        val buf = UByteBuffer(bufferSize.toInt())
+        try {
+            return process(encrypt,
+                input = {
+                    inFile.read(buf, true)
+                    buf
+                }
+            ) {
+                outFile.write(it)
+            }
+        } finally {
+            outFile.close()
+            inFile.close()
+        }
+    }
+
+    /**
+     * Generate a Random IV of the specified size in bytes, using the specified SecureRandom class
+     * as a source.
+     * @param size length of initialization vector in bytes. Default is specified by the configured
+     * engine, so the default should typically be sufficient.
+     * @param randomSource Uses the [SecureRandom] source to create a cryptographic-quality random set of
+     * bytes. Default uses SecureRandomMechanism.Hash_DRBG and SecureRandomAlgorithm.SHA512
+     */
+    fun randomIV(
+        size: Int = engine.ivSize,
+        randomSource: SecureRandom = SecureRandom()
+    ): UByteArray {
+        return UByteArray(size).apply {
+            randomSource.nextBytes(this)
+        }
+    }
+
+    /**
+     * Optional convenience function. Reads an Initialization Vector (IV) from the file. Typically
+     * the IV is at the start of the file, i.e. position 0.  If the
+     * file used [writeInitializationVector] to write the IV, then the length of the IV written is
+     * in the first byte of the file.
+     * The number of bytes is read into a UByteArray.
+     * The result is returned, and is also retained in [keyConfiguration].
+     * Note: any prior value in keyConfiguration.iv is overwritten.
+     *
+     * If the file has an IV with no length byte, then specify the length to be retrieved in the second
+     * argument.
+     *
+     * @param encryptedFile that has an IV at the current position, typically position 0.
+     * On return the file position will be just after the IV read, if any.
+     * @param length optional length of IV to read. If -1 (default), then assumes first byte of file is IV
+     * length, see [writeInitializationVector]. if 0, then no IV is read and an empty IV array is
+     * returned. If length > 0, then a byte array is returned
+     * containing the IV. If file does not contain sufficient bytes, an exception is thrown.
+     * @return UByteArray with the IV value, which is also retained in keyConfiguration.iv.
+     */
+    suspend fun readInitializationVector(encryptedFile: RawFile, length: Int = -1): UByteArray {
+        if (length == 0) {
+            keyConfiguration.iv = UByteArray(0)
+        } else {
+            var l = length.toUInt()
+            if (length < 0) {
+                encryptedFile.readBuffer(1u).apply {
+                    if (remaining != 1) throw IllegalStateException("Could not read length byte: $this")
+                    l = byte.toUInt()
+                }
+            }
+            val pos = encryptedFile.position
+            encryptedFile.readUBuffer(l).apply {
+                if (capacity.toUInt() != l)
+                    throw IllegalStateException("Expected $l bytes at position $pos, found $capacity")
+                keyConfiguration.iv = getBytes()
+            }
+        }
+        return keyConfiguration.iv
+    }
+
+    /**
+     * Optional convenience function. Writes the IV, typically to the start of a file (position 0).
+     * Writes the content of the iv property of [keyConfiguration] at the current file position. File must
+     * be write mode or an exception is thrown
+     * @param encyptedFile typically a new file and the IV is the first content written. If file is not
+     * write mode, an exception is thrown
+     * @param writeLength if true, the first byte written is the length of the IV in [keyConfiguration].
+     * If false, just the IV is written.
+     * @return number of bytes written to file.
+     */
+    suspend fun writeInitializationVector(encyptedFile: RawFile, writeLength: Boolean = true): UInt {
+        val l = if (writeLength) 1 else 0
+        UByteBuffer(keyConfiguration.iv.size + l).apply {
+            if (writeLength)
+                byte = keyConfiguration.iv.size.toUByte()
+            putBytes(keyConfiguration.iv)
+            flip()
+            println("Write IV: $contentBytes")
+            encyptedFile.write(this)
+            return capacity.toUInt()
+        }
     }
 
     private fun finishProcess():UByteArray {
@@ -361,121 +499,6 @@ class Cipher {
                 }
             }.toUInt()
             return outBlock
-        }
-    }
-
-    /**
-     * Decrypt one inBuffer that contains entire payload to be encrypted/decrypted. Does same as
-     * [process] function using one and only one input buffer. Also does not require coroutine.
-     * @param encrypt true if input data is being encrypted. False if input data is being decrypted.
-     * @param inBuffer remaining bytes in buffer are processed as entire payload.
-     * @return processed output
-     */
-    fun processOne(encrypt: Boolean, inBuffer: UByteBuffer): UByteBuffer {
-        val eng = engine
-        eng.apply {
-            init(encrypt, parameters)
-            outBlock = UByteBuffer(inBuffer.capacity + (blockSize * 2))
-            return processOneBuffer(inBuffer).apply {
-                position = limit
-                limit = capacity
-                putBytes(finishProcess())
-            }.flip()
-        }
-    }
-
-    /**
-     * Convenience method for encrypting/decrypting a source file to a destination file. For decryption,
-     * if the inFile has an initialization vector, it must be read before calling this function,
-     * so that the current position of the inFile is the start of encrypted data. For encryption, any
-     * initialization vector should already have been written before calling this.
-     * @param encrypt true for encryption, false for decryption
-     * @param inFile input data file, see note above for IV handling
-     * @param outFile output data file, see note above for IV handling
-     */
-    suspend fun process(
-        encrypt: Boolean,
-        inFile: RawFile,
-        outFile: RawFile
-    ): ULong {
-        inFile.blockSize = engine.blockSize.toUInt()
-        val buf = UByteBuffer(bufferSize.toInt())
-        try {
-            return process(encrypt,
-                input = {
-                    inFile.read(buf, true)
-                    buf
-                }
-            ) {
-                outFile.write(it)
-            }
-        } finally {
-            outFile.close()
-            inFile.close()
-        }
-    }
-
-    /**
-     * Optional convenience function. Reads an Initialization Vector (IV) from the file. Typically
-     * the IV is at the start of the file, i.e. position 0.  If the
-     * file used [writeInitializationVector] to write the IV, then the length of the IV written is
-     * in the first byte of the file.
-     * The number of bytes is read into a UByteArray.
-     * The result is returned, and is also retained in [keyConfiguration].
-     * Note: any prior value in keyConfiguration.iv is overwritten.
-     *
-     * If the file has an IV with no length byte, then specify the length to be retrieved in the second
-     * argument.
-     *
-     * @param encryptedFile that has an IV at the current position, typically position 0.
-     * On return the file position will be just after the IV read, if any.
-     * @param length optional length of IV to read. If -1 (default), then assumes first byte of file is IV
-     * length, see [writeInitializationVector]. if 0, then no IV is read and an empty IV array is
-     * returned. If length > 0, then a byte array is returned
-     * containing the IV. If file does not contain sufficient bytes, an exception is thrown.
-     * @return UByteArray with the IV value, which is also retained in keyConfiguration.iv.
-     */
-    suspend fun readInitializationVector(encryptedFile: RawFile, length: Int = -1): UByteArray {
-        if (length == 0) {
-            keyConfiguration.iv = UByteArray(0)
-        } else {
-            var l = length.toUInt()
-            if (length < 0) {
-                encryptedFile.readBuffer(1u).apply {
-                    if (remaining != 1) throw IllegalStateException("Could not read length byte: $this")
-                    l = byte.toUInt()
-                }
-            }
-            val pos = encryptedFile.position
-            encryptedFile.readUBuffer(l).apply {
-                if (capacity.toUInt() != l)
-                    throw IllegalStateException("Expected $l bytes at position $pos, found $capacity")
-                keyConfiguration.iv = getBytes()
-            }
-        }
-        return keyConfiguration.iv
-    }
-
-    /**
-     * Optional convenience function. Writes the IV, typically to the start of a file (position 0).
-     * Writes the content of the iv property of [keyConfiguration] at the current file position. File must
-     * be write mode or an exception is thrown
-     * @param encyptedFile typically a new file and the IV is the first content written. If file is not
-     * write mode, an exception is thrown
-     * @param writeLength if true, the first byte written is the length of the IV in [keyConfiguration].
-     * If false, just the IV is written.
-     * @return number of bytes written to file.
-     */
-    suspend fun writeInitializationVector(encyptedFile: RawFile, writeLength: Boolean = true): UInt {
-        val l = if (writeLength) 1 else 0
-        UByteBuffer(keyConfiguration.iv.size + l).apply {
-            if (writeLength)
-                byte = keyConfiguration.iv.size.toUByte()
-            putBytes(keyConfiguration.iv)
-            flip()
-            println("Write IV: $contentBytes")
-            encyptedFile.write(this)
-            return capacity.toUInt()
         }
     }
 
