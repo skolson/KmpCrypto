@@ -84,9 +84,7 @@ class AesTests {
                     keyDigest = Digests.SHA256
                 }
             }.apply {
-                val encrypted = processOne(true, UByteBuffer(payloadBytes.toUByteArray()))
-                val decrypted = processOne(false, encrypted)
-                assertContentEquals(payloadBytes.toUByteArray(), decrypted.getBytes())
+                CryptoTestHelp.singleBufferTest(this)
             }
         }
     }
@@ -98,7 +96,7 @@ class AesTests {
                 parse("aes/gcm")
                 key {
                     key = CryptoTestHelp.key1
-                    iv = randomIV()
+                    authenticatedEncryptionAssociatedData(16, iv8)
                     keyDigest = Digests.SHA256
                 }
             }.apply {
