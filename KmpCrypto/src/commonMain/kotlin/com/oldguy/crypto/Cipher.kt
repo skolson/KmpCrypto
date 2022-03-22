@@ -369,70 +369,6 @@ class Cipher {
         }
     }
 
-    /**
-     * Optional convenience function. Reads an Initialization Vector (IV) from the file. Typically
-     * the IV is at the start of the file, i.e. position 0.  If the
-     * file used [writeInitializationVector] to write the IV, then the length of the IV written is
-     * in the first byte of the file.
-     * The number of bytes is read into a UByteArray.
-     * The result is returned, and is also retained in [keyConfiguration].
-     * Note: any prior value in keyConfiguration.iv is overwritten.
-     *
-     * If the file has an IV with no length byte, then specify the length to be retrieved in the second
-     * argument.
-     *
-     * @param encryptedFile that has an IV at the current position, typically position 0.
-     * On return the file position will be just after the IV read, if any.
-     * @param length optional length of IV to read. If -1 (default), then assumes first byte of file is IV
-     * length, see [writeInitializationVector]. if 0, then no IV is read and an empty IV array is
-     * returned. If length > 0, then a byte array is returned
-     * containing the IV. If file does not contain sufficient bytes, an exception is thrown.
-     * @return UByteArray with the IV value, which is also retained in keyConfiguration.iv.
-     */
-    suspend fun readInitializationVector(encryptedFile: RawFile, length: Int = -1): UByteArray {
-        if (length == 0) {
-            keyConfiguration.iv = UByteArray(0)
-        } else {
-            var l = length.toUInt()
-            if (length < 0) {
-                encryptedFile.readBuffer(1u).apply {
-                    if (remaining != 1) throw IllegalStateException("Could not read length byte: $this")
-                    l = byte.toUInt()
-                }
-            }
-            val pos = encryptedFile.position
-            encryptedFile.readUBuffer(l).apply {
-                if (capacity.toUInt() != l)
-                    throw IllegalStateException("Expected $l bytes at position $pos, found $capacity")
-                keyConfiguration.iv = getBytes()
-            }
-        }
-        return keyConfiguration.iv
-    }
-
-    /**
-     * Optional convenience function. Writes the IV, typically to the start of a file (position 0).
-     * Writes the content of the iv property of [keyConfiguration] at the current file position. File must
-     * be write mode or an exception is thrown
-     * @param encyptedFile typically a new file and the IV is the first content written. If file is not
-     * write mode, an exception is thrown
-     * @param writeLength if true, the first byte written is the length of the IV in [keyConfiguration].
-     * If false, just the IV is written.
-     * @return number of bytes written to file.
-     */
-    suspend fun writeInitializationVector(encyptedFile: RawFile, writeLength: Boolean = true): UInt {
-        val l = if (writeLength) 1 else 0
-        UByteBuffer(keyConfiguration.iv.size + l).apply {
-            if (writeLength)
-                byte = keyConfiguration.iv.size.toUByte()
-            putBytes(keyConfiguration.iv)
-            flip()
-            println("Write IV: $contentBytes")
-            encyptedFile.write(this)
-            return capacity.toUInt()
-        }
-    }
-
     private fun finishProcess():UByteArray {
         val eng = engine
         eng.apply {
@@ -503,10 +439,82 @@ class Cipher {
     }
 
     companion object {
+        /**
+         * DSL builder function. Instantiates a new Cipher instance, uses [lambda] to configure it.
+         * @param lambda configures the Cipher instance
+         * @return configured Cipher instance
+         */
         fun build(lambda: Cipher.() -> Unit): Cipher {
             return Cipher()
                 .apply(lambda)
         }
+
+        /**
+         * Optional convenience function. Reads an Initialization Vector (IV) from the file. Typically
+         * the IV is at the start of the file, i.e. position 0.  If the
+         * file used [writeInitializationVector] with the writeLength option true to write the IV,
+         * then the length of the IV written in the first byte of the file.
+         * The number of bytes is read into a UByteArray.
+         * The result is returned.
+         *
+         * If the file has an IV with no length byte, then specify the length to be retrieved in the second
+         * argument.
+         *
+         * @param encryptedFile that has an IV at the current position, typically position 0.
+         * On return the file position will be just after the IV read, if any.
+         * @param length optional length of IV to read. If -1 (default), then assumes first byte of file is IV
+         * length, see [writeInitializationVector]. if 0, then no IV is read and an empty IV array is
+         * returned. If length > 0, then a byte array is returned
+         * containing the IV. If file does not contain sufficient bytes, an exception is thrown.
+         * @return UByteArray with the IV value, which is also retained in keyConfiguration.iv.
+         */
+        suspend fun readInitializationVector(encryptedFile: RawFile, length: Int = -1): UByteArray {
+            if (length == 0) {
+                return UByteArray(0)
+            } else {
+                var l = length.toUInt()
+                if (length < 0) {
+                    encryptedFile.readBuffer(1u).apply {
+                        if (remaining != 1) throw IllegalStateException("Could not read length byte: $this")
+                        l = byte.toUInt()
+                    }
+                }
+                val pos = encryptedFile.position
+                encryptedFile.readUBuffer(l).apply {
+                    if (capacity.toUInt() != l)
+                        throw IllegalStateException("Expected $l bytes at position $pos, found $capacity")
+                    return getBytes()
+                }
+            }
+        }
+
+        /**
+         * Optional convenience function. Writes the IV, typically to the start of a file (position 0).
+         * Writes ivBytes at the current file position. File must
+         * be write mode or an exception is thrown
+         * @param encryptedFile typically a new file and the IV is the first content written. If file is not
+         * write mode, an exception is thrown
+         * @param ivBytes bytes to be written. Entire array content is written.
+         * @param writeLength if true, the first byte written is the length of the IV in [keyConfiguration].
+         * If false, just the IV is written.
+         * @return number of bytes written to file.
+         */
+        suspend fun writeInitializationVector(
+            encryptedFile: RawFile,
+            ivBytes: UByteArray,
+            writeLength: Boolean = true
+        ): UInt {
+            val l = if (writeLength) 1 else 0
+            UByteBuffer(ivBytes.size + l).apply {
+                if (writeLength)
+                    byte = ivBytes.size.toUByte()
+                putBytes(ivBytes)
+                flip()
+                encryptedFile.write(this)
+                return capacity.toUInt()
+            }
+        }
+
     }
 
     /**

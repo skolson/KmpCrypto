@@ -43,10 +43,10 @@ class FileTests {
                     iv = randomIV(12)
                 }
             }
-            val ivContent = cipher.keyConfiguration.iv
+            val ivContent = cipher.iv
             val source = RawFile(zipFile)
             val dest = RawFile(zipEncrypted, FileMode.Write)
-            cipher.writeInitializationVector(dest)
+            Cipher.writeInitializationVector(dest, cipher.iv)
             cipher.process(true, source, dest)
             assertTrue(zipEncrypted.exists)
             assertEquals(zipSize, zipFile.size)
@@ -59,8 +59,9 @@ class FileTests {
 
             // verify IV content
             val check = RawFile(zipEncrypted)
-            val ivRead = cipher.readInitializationVector(check)
+            val ivRead = Cipher.readInitializationVector(check)
             assertContentEquals(ivContent, ivRead)
+            cipher.iv = ivRead
 
             // decrypt
             val decryptFile = File(workDirectory, "$testZipName.decrypt.zip")
