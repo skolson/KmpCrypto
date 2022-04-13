@@ -17,12 +17,14 @@ plugins {
 val mavenArtifactId = "kmp-crypto"
 val appleFrameworkName = "KmpCrypto"
 group = "com.oldguy"
-version = "0.1.2"
+version = "0.1.3"
 
 val androidMinSdk = 26
 val androidTargetSdkVersion = 32
 val iosMinSdk = "14"
 val kmpPackageName = "com.oldguy.crypto"
+val kotlinCoroutines = "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.1"
+val kotlinCoroutinesTest = "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.1"
 
 val androidMainDirectory = projectDir.resolve("src").resolve("androidMain")
 val javadocTaskName = "javadocJar"
@@ -94,7 +96,6 @@ tasks {
 val junitVersion = "5.8.2"
 val junit5 = "org.junit.jupiter:junit-jupiter-api:$junitVersion"
 val junit5Runtime = "org.junit.jupiter:junit-jupiter-engine:$junitVersion"
-val kotlinCoroutinesTest = "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.0"
 
 kotlin {
     android {
@@ -157,14 +158,14 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.0")
+                implementation(kotlinCoroutines)
                 implementation("com.oldguy:kmp-io:0.1.2")
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.0")
+                implementation(kotlinCoroutinesTest)
             }
         }
         val androidMain by getting {
@@ -193,7 +194,7 @@ kotlin {
             dependsOn(commonTest)
             dependencies {
                 implementation(kotlin("test"))
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.0")
+                implementation(kotlinCoroutinesTest)
             }
         }
         val iosX64Main by getting {

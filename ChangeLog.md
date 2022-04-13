@@ -1,5 +1,10 @@
 # Change Log
 
+### 0.1.3 (in progress)
+
+- Kotlin 1.6.20
+- Gradle 7.4.2
+
 ### 0.1.2
 
 - Cipher fun processOne added - convenience function for single-payload operations, no coroutine required.
