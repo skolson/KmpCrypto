@@ -159,7 +159,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(kotlinCoroutines)
-                implementation("com.oldguy:kmp-io:0.1.2")
+                implementation("com.oldguy:kmp-io:0.1.3")
             }
         }
         val commonTest by getting {
