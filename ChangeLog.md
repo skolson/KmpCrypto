@@ -2,8 +2,10 @@
 
 ### 0.1.3 (in progress)
 
-- Kotlin 1.6.21
-- Gradle 7.4.2
+- Kotlin 1.7.10
+- Kotlinx atomicfu 0.18.2
+- Kotlin coroutines 1.6.4
+- Gradle 7.5
 
 ### 0.1.2
 

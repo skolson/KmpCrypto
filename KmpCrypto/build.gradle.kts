@@ -10,7 +10,7 @@ plugins {
     id("maven-publish")
     id("signing")
     id("kotlinx-atomicfu")
-    id("org.jetbrains.dokka") version "1.6.10"
+    id("org.jetbrains.dokka") version "1.7.10"
     id("com.github.ben-manes.versions") version "0.42.0"
 }
 
@@ -23,15 +23,16 @@ val androidMinSdk = 26
 val androidTargetSdkVersion = 32
 val iosMinSdk = "14"
 val kmpPackageName = "com.oldguy.crypto"
-val kotlinCoroutines = "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.1"
-val kotlinCoroutinesTest = "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.6.1"
+val kotlinCoroutinesVersion = "1.6.4"
+val kotlinCoroutines = "org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion"
+val kotlinCoroutinesTest = "org.jetbrains.kotlinx:kotlinx-coroutines-test:$kotlinCoroutinesVersion"
 
 val androidMainDirectory = projectDir.resolve("src").resolve("androidMain")
 val javadocTaskName = "javadocJar"
 
 android {
     compileSdk = androidTargetSdkVersion
-    buildToolsVersion = "33.0.0-rc2"
+    buildToolsVersion = "33.0.0"
 
     sourceSets {
         getByName("main") {
