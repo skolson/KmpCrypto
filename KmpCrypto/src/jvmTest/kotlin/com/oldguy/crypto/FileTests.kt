@@ -1,7 +1,6 @@
 package com.oldguy.crypto
 
 import com.oldguy.common.io.*
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -14,7 +13,6 @@ import kotlin.test.assertTrue
  *
  * Currently only test is AES/GCM, need to add tests of same process using additional algorithms.
  */
-@ExperimentalCoroutinesApi
 class FileTests {
     private val testZipName = "ZerosZip64.zip"
     val password = "xyzAbc!@#"

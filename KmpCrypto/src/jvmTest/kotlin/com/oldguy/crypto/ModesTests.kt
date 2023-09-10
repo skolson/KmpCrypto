@@ -4,12 +4,10 @@ import com.oldguy.common.io.ByteBuffer
 import com.oldguy.common.io.Charset
 import com.oldguy.common.io.Charsets
 import com.oldguy.common.io.UByteBuffer
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 
-@ExperimentalCoroutinesApi
 class AesTests {
     val iv8 = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)
     val iv16 = ubyteArrayOf(1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u, 0u)

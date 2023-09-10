@@ -1,11 +1,19 @@
 # Change Log
 
-### 0.1.3 (in progress)
+### 0.1.4
 
-- Kotlin 1.7.10
-- Kotlinx atomicfu 0.18.2
+- Kotlin 1.9.10
+- Kotlinx atomicfu 0.22.0
+- Kotlin coroutines 1.7.3
+- Gradle 8.3
+- kmp-io 0.1.4
+
+### 0.1.3 
+
+- Kotlin 1.7.20
+- Kotlinx atomicfu 0.18.4
 - Kotlin coroutines 1.6.4
-- Gradle 7.5
+- Gradle 7.5.1
 
 ### 0.1.2
 

@@ -10,46 +10,30 @@ plugins {
     id("maven-publish")
     id("signing")
     id("kotlinx-atomicfu")
-    id("org.jetbrains.dokka") version "1.7.10"
-    id("com.github.ben-manes.versions") version "0.42.0"
+    id("org.jetbrains.dokka") version "1.9.0"
+    id("com.github.ben-manes.versions") version "0.48.0"
 }
 
 val mavenArtifactId = "kmp-crypto"
 val appleFrameworkName = "KmpCrypto"
 group = "com.oldguy"
-version = "0.1.3"
+version = "0.1.4"
 
 val androidMinSdk = 26
-val androidTargetSdkVersion = 32
+val androidTargetSdkVersion = 34
 val iosMinSdk = "14"
 val kmpPackageName = "com.oldguy.crypto"
-val kotlinCoroutinesVersion = "1.6.4"
+val kotlinCoroutinesVersion = "1.7.3"
 val kotlinCoroutines = "org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion"
 val kotlinCoroutinesTest = "org.jetbrains.kotlinx:kotlinx-coroutines-test:$kotlinCoroutinesVersion"
 
-val androidMainDirectory = projectDir.resolve("src").resolve("androidMain")
-val javadocTaskName = "javadocJar"
-
 android {
     compileSdk = androidTargetSdkVersion
-    buildToolsVersion = "33.0.0"
-
-    sourceSets {
-        getByName("main") {
-            java.srcDir(androidMainDirectory.resolve("kotlin"))
-            manifest.srcFile(androidMainDirectory.resolve("AndroidManifest.xml"))
-        }
-        getByName("test") {
-            java.srcDir("src/androidTest/kotlin")
-        }
-        getByName("androidTest") {
-            java.srcDir("src/androidAndroidTest/kotlin")
-        }
-    }
+    buildToolsVersion = "34.0.0"
+    namespace = "com.oldguy.crypto"
 
     defaultConfig {
         minSdk = androidMinSdk
-        targetSdk = androidTargetSdkVersion
 
         buildFeatures {
             buildConfig = false
@@ -69,11 +53,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+    packaging.resources.excludes.addAll( listOf(
+        "META-INF/versions/9/*"
+    ))
+
     dependencies {
         testImplementation("junit:junit:4.13.2")
-        androidTestImplementation("androidx.test:core:1.4.0")
-        androidTestImplementation("androidx.test:runner:1.4.0")
-        androidTestImplementation("androidx.test.ext:junit:1.1.3")
+        androidTestImplementation("androidx.test:core:1.5.0")
+        androidTestImplementation("androidx.test:runner:1.5.2")
+        androidTestImplementation("androidx.test.ext:junit:1.1.5")
     }
 }
 
@@ -87,19 +75,14 @@ tasks {
             }
         }
     }
-    create<Jar>(javadocTaskName) {
-        dependsOn(dokkaHtml)
-        archiveClassifier.set("javadoc")
-        from(dokkaHtml.get().outputDirectory)
-    }
 }
 
-val junitVersion = "5.8.2"
+val junitVersion = "5.10.0"
 val junit5 = "org.junit.jupiter:junit-jupiter-api:$junitVersion"
 val junit5Runtime = "org.junit.jupiter:junit-jupiter-engine:$junitVersion"
 
 kotlin {
-    android {
+    androidTarget {
         publishLibraryVariants("release", "debug")
         mavenPublication {
             artifactId = artifactId.replace(project.name, mavenArtifactId)
@@ -155,12 +138,11 @@ kotlin {
     }
     jvm()
 
-    @Suppress("UNUSED_VARIABLE")
     sourceSets {
         val commonMain by getting {
             dependencies {
                 implementation(kotlinCoroutines)
-                implementation("com.oldguy:kmp-io:0.1.3")
+                implementation("io.github.skolson:kmp-io:0.1.4")
             }
         }
         val commonTest by getting {
@@ -173,13 +155,13 @@ kotlin {
             dependsOn(commonMain)
         }
 
-        val androidTest by getting {
+        val androidUnitTest by getting {
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation("junit:junit:4.13.2")
             }
         }
-        val androidAndroidTest by getting {
+        val androidInstrumentedTest by getting {
             dependsOn(commonTest)
             dependencies {
                 implementation(kotlin("test-junit"))
@@ -226,7 +208,25 @@ kotlin {
         all {
             languageSettings {
                 optIn("kotlin.ExperimentalUnsignedTypes")
-                optIn("kotlin.ExperimentalCoroutinesApi")
+            }
+        }
+    }
+
+    // workaround starting with Gradle 8 and kotlin 1.8.x, supposedly fixed in Kotlin 1.9.20 (KT-55751)
+    val workaroundAttribute = Attribute.of("com.oldguy.crypto", String::class.java)
+    afterEvaluate {
+        configurations {
+            named("debugFrameworkIosFat").configure {
+                attributes.attribute(workaroundAttribute, "iosFat")
+            }
+            named("podDebugFrameworkIosFat").configure {
+                attributes.attribute(workaroundAttribute, "podIosFat")
+            }
+            named("releaseFrameworkIosFat").configure {
+                attributes.attribute(workaroundAttribute, "iosFat")
+            }
+            named("podReleaseFrameworkIosFat").configure {
+                attributes.attribute(workaroundAttribute, "podIosFat")
             }
         }
     }
@@ -234,7 +234,17 @@ kotlin {
     publishing {
         publications.withType(MavenPublication::class) {
             artifactId = artifactId.replace(project.name, mavenArtifactId)
-            artifact(tasks.getByPath(javadocTaskName))
+
+            // workaround for https://github.com/gradle/gradle/issues/26091
+            val dokkaJar = tasks.register("${this.name}DokkaJar", Jar::class) {
+                group = JavaBasePlugin.DOCUMENTATION_GROUP
+                description = "Dokka builds javadoc jar"
+                archiveClassifier.set("javadoc")
+                from(tasks.named("dokkaHtml"))
+                archiveBaseName.set("${archiveBaseName.get()}-${this.name}")
+            }
+            artifact(dokkaJar)
+
             pom {
                 name.set("$appleFrameworkName Kotlin Multiplatform Common File I/O")
                 description.set("Cryptography Library on supported 64 bit platforms; Android IOS, Windows, Linux, MacOS")
@@ -269,6 +279,10 @@ tasks.withType<Test> {
         showStandardStreams = true
         showStackTraces = true
     }
+}
+
+task("testClasses").doLast {
+    println("testClasses task Iguana workaround for KMP libraries")
 }
 
 signing {
