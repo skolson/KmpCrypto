@@ -3,6 +3,7 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
+
 plugins {
     libs.plugins.also {
         alias(it.kotlin.multiplatform)
@@ -18,7 +19,7 @@ plugins {
 val mavenArtifactId = "kmp-crypto"
 val appleFrameworkName = "KmpCrypto"
 group = "com.oldguy"
-version = "0.1.5"
+version = "0.1.6"
 
 val iosMinSdk = "14"
 val kmpPackageName = "com.oldguy.crypto"
@@ -113,6 +114,15 @@ kotlin {
             }
         }
     }
+    macosArm64 {
+        binaries {
+            framework {
+                baseName = appleFrameworkName
+                appleXcf.add(this)
+                isStatic = true
+            }
+        }
+    }
     iosX64 {
         binaries {
             framework {
@@ -180,6 +190,10 @@ kotlin {
         val macosX64Main by getting {
         }
         val macosX64Test by getting {
+        }
+        val macosArm64Main by getting {
+        }
+        val macosArm64Test by getting {
         }
         val jvmMain by getting {
         }

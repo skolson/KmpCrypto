@@ -1,5 +1,16 @@
 # Change Log
 
+### 0.1.6
+
+- macosArm64 target
+- Kotlin 1.9.23
+- gradle 8.6
+- gradle versions catalog
+- kmp-io 0.1.6
+- Kotlin coroutines 1.8.0-RC2
+- Kotlinx atomicfu 0.23.2
+- bouncycastle 1.7.0 (used in unit tests)
+
 ### 0.1.5 
 
 - Kotlin 1.9.22

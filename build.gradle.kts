@@ -1,12 +1,3 @@
-
-buildscript {
-    repositories {
-        gradlePluginPortal()
-        google()
-        mavenCentral()
-    }
-}
-
 plugins {
     libs.plugins.also {
         alias(it.kotlin.multiplatform) apply false

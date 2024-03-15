@@ -1,7 +1,7 @@
 [versions]
-androidGradlePlugin = "8.4.0-alpha09"
+androidGradlePlugin = "8.4.0-alpha13"
 
-kotlin = "1.9.22"
+kotlin = "1.9.23"
 kotlinCoroutines = "1.8.0-RC2"
 kotlinxAtomicfu = "0.23.2"
 
