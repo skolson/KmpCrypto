@@ -19,7 +19,7 @@ plugins {
 val mavenArtifactId = "kmp-crypto"
 val appleFrameworkName = "KmpCrypto"
 group = "com.oldguy"
-version = "0.1.6"
+version = libs.versions.appVersion.get()
 
 val iosMinSdk = "14"
 val kmpPackageName = "com.oldguy.crypto"
